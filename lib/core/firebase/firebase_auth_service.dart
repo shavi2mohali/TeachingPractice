@@ -34,6 +34,7 @@ class FirebaseAuthService {
     required String email,
     required String password,
     String? collegeId,
+    String? schoolId,
     String? dietId,
   }) async {
     final credential = await _firebaseAuth.createUserWithEmailAndPassword(
@@ -62,6 +63,8 @@ class FirebaseAuthService {
       'email': email.trim(),
       if (collegeId != null && collegeId.trim().isNotEmpty)
         'collegeId': collegeId.trim(),
+      if (schoolId != null && schoolId.trim().isNotEmpty)
+        'schoolId': schoolId.trim(),
       if (dietId != null && dietId.trim().isNotEmpty) 'dietId': dietId.trim(),
       'createdAt': FieldValue.serverTimestamp(),
     };

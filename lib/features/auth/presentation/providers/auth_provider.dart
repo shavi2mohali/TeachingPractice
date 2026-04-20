@@ -26,6 +26,7 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     String? collegeId,
+    String? schoolId,
     String? dietId,
   }) async {
     _setLoading(true);
@@ -40,6 +41,7 @@ class AuthProvider extends ChangeNotifier {
         email: email,
         password: password,
         collegeId: collegeId,
+        schoolId: schoolId,
         dietId: dietId,
       );
       _currentUser = null;

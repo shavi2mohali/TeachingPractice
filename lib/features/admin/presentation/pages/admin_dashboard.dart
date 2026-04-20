@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../admin/pending_registrations_screen.dart';
+import '../../../../admin_web/features/schools/presentation/pages/school_excel_upload_page.dart';
 import '../../../../admin_web/features/students/presentation/pages/student_excel_upload_page.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
@@ -30,59 +31,79 @@ class _AdminDashboardState extends State<AdminDashboard> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: GridView.count(
-              shrinkWrap: true,
-              crossAxisCount: 3,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.4,
+            child: Column(
               children: [
-                _AdminHomeCard(
-                  title: 'Upload Students',
-                  icon: Icons.upload_file,
-                  onTap: () => _openPage(
-                    context,
-                    const StudentExcelUploadPage(),
-                  ),
+                Text(
+                  'Admin Dashboard',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                _AdminHomeCard(
-                  title: 'View Students',
-                  icon: Icons.people_outline,
-                  onTap: () => _openPage(
-                    context,
-                    const ViewStudentsPage(),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 1.4,
+                    children: [
+                      _AdminHomeCard(
+                        title: 'Upload Students',
+                        icon: Icons.upload_file,
+                        onTap: () => _openPage(
+                          context,
+                          const StudentExcelUploadPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'View Students',
+                        icon: Icons.people_outline,
+                        onTap: () => _openPage(
+                          context,
+                          const ViewStudentsPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Manage Schools',
+                        icon: Icons.school_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const ManageSchoolsPlaceholderPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Upload Schools from Excel',
+                        icon: Icons.maps_home_work_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const SchoolExcelUploadPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'View Proposals',
+                        icon: Icons.assignment_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const ViewProposalsPlaceholderPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Pending Registrations',
+                        icon: Icons.how_to_reg_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const PendingRegistrationsScreen(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: _isSeedingColleges
+                            ? 'Seeding Colleges...'
+                            : 'Seed Colleges Data',
+                        icon: Icons.dataset_outlined,
+                        onTap: _isSeedingColleges ? null : _seedCollegesData,
+                      ),
+                    ],
                   ),
-                ),
-                _AdminHomeCard(
-                  title: 'Manage Schools',
-                  icon: Icons.school_outlined,
-                  onTap: () => _openPage(
-                    context,
-                    const ManageSchoolsPlaceholderPage(),
-                  ),
-                ),
-                _AdminHomeCard(
-                  title: 'View Proposals',
-                  icon: Icons.assignment_outlined,
-                  onTap: () => _openPage(
-                    context,
-                    const ViewProposalsPlaceholderPage(),
-                  ),
-                ),
-                _AdminHomeCard(
-                  title: 'Pending Registrations',
-                  icon: Icons.how_to_reg_outlined,
-                  onTap: () => _openPage(
-                    context,
-                    const PendingRegistrationsScreen(),
-                  ),
-                ),
-                _AdminHomeCard(
-                  title: _isSeedingColleges
-                      ? 'Seeding Colleges...'
-                      : 'Seed Colleges Data',
-                  icon: Icons.dataset_outlined,
-                  onTap: _isSeedingColleges ? null : _seedCollegesData,
                 ),
               ],
             ),

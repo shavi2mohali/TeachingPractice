@@ -24,6 +24,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
   String? _selectedRole;
   String? _selectedDistrict;
   String? _selectedCollegeId;
+  String? _selectedSchoolId;
   String? _selectedDietId;
 
   @override
@@ -49,6 +50,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
         email: _emailController.text,
         password: _passwordController.text,
         collegeId: _selectedCollegeId,
+        schoolId: _selectedSchoolId,
         dietId: _selectedDietId,
       );
 
@@ -119,6 +121,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         : (value) => setState(() {
                               _selectedRole = value;
                               _selectedCollegeId = null;
+                              _selectedSchoolId = null;
                               _selectedDietId = null;
                             }),
                     validator: _required,
@@ -143,6 +146,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         : (value) => setState(() {
                               _selectedDistrict = value;
                               _selectedCollegeId = null;
+                              _selectedSchoolId = null;
                               _selectedDietId = null;
                             }),
                     validator: _required,
@@ -150,10 +154,22 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   const SizedBox(height: 12),
                   if (_selectedRole == 'College') ...[
                     _CollegeNameDropdown(
+                      districtId: _selectedDistrict,
                       value: _selectedCollegeId,
                       enabled: !isLoading,
                       onChanged: (value) {
                         setState(() => _selectedCollegeId = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_selectedRole == 'School') ...[
+                    _SchoolNameDropdown(
+                      districtId: _selectedDistrict,
+                      value: _selectedSchoolId,
+                      enabled: !isLoading,
+                      onChanged: (value) {
+                        setState(() => _selectedSchoolId = value);
                       },
                     ),
                     const SizedBox(height: 12),
@@ -242,19 +258,30 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
 class _CollegeNameDropdown extends StatelessWidget {
   const _CollegeNameDropdown({
+    required this.districtId,
     required this.value,
     required this.enabled,
     required this.onChanged,
   });
 
+  final String? districtId;
   final String? value;
   final bool enabled;
   final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final selectedDistrict = districtId;
+
+    if (selectedDistrict == null || selectedDistrict.trim().isEmpty) {
+      return const Text('Select district first');
+    }
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('colleges').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('colleges')
+          .where('districtId', isEqualTo: selectedDistrict)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Text('Unable to load colleges: ${snapshot.error}');
@@ -278,6 +305,7 @@ class _CollegeNameDropdown extends StatelessWidget {
             : null;
 
         return DropdownButtonFormField<String>(
+          key: ValueKey('college-$selectedDistrict'),
           value: selectedValue,
           decoration: const InputDecoration(
             labelText: 'College Name',
@@ -302,6 +330,89 @@ class _CollegeNameDropdown extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _SchoolNameDropdown extends StatelessWidget {
+  const _SchoolNameDropdown({
+    required this.districtId,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? districtId;
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedDistrict = districtId;
+
+    if (selectedDistrict == null || selectedDistrict.trim().isEmpty) {
+      return const Text('Select district first');
+    }
+
+    final schoolDistrictId = selectedDistrict.trim().toUpperCase();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('schools')
+          .where('districtId', isEqualTo: schoolDistrictId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text('Unable to load schools: ${snapshot.error}');
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+
+        final schools = snapshot.data?.docs ?? [];
+
+        if (schools.isEmpty) {
+          return const Text('No schools found for selected district');
+        }
+
+        final selectedValue = schools.any((doc) {
+          return _schoolId(doc) == value;
+        })
+            ? value
+            : null;
+
+        return DropdownButtonFormField<String>(
+          key: ValueKey('school-$schoolDistrictId'),
+          value: selectedValue,
+          decoration: const InputDecoration(
+            labelText: 'School Name',
+            border: OutlineInputBorder(),
+          ),
+          items: schools
+              .map(
+                (doc) => DropdownMenuItem<String>(
+                  value: _schoolId(doc),
+                  child: Text(doc.data()['name'] as String? ?? doc.id),
+                ),
+              )
+              .toList(),
+          onChanged: enabled ? onChanged : null,
+          validator: (selectedValue) {
+            if (selectedValue == null || selectedValue.trim().isEmpty) {
+              return 'Required';
+            }
+
+            return null;
+          },
+        );
+      },
+    );
+  }
+
+  String _schoolId(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    return data['schoolId'] as String? ?? data['udise'] as String? ?? doc.id;
   }
 }
 
