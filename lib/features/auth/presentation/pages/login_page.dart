@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/routes/role_navigation.dart';
+import '../../../../core/constants/registration_constants.dart';
+import 'approval_pending_page.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/home_logout_actions.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -44,6 +47,18 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       final message = authProvider.errorMessage ?? 'Unable to login.';
+
+      if (message == RegistrationConstants.loginPendingMessage) {
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => const ApprovalPendingPage(
+              message: RegistrationConstants.loginPendingMessage,
+            ),
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
@@ -55,7 +70,10 @@ class _LoginPageState extends State<LoginPage> {
     final isLoading = context.watch<AuthProvider>().isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
+      appBar: AppBar(
+        title: const Text('Login'),
+        actions: const [HomeLogoutActions()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),

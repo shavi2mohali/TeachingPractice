@@ -32,6 +32,33 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _certificates =>
       _firestore.collection('certificates');
 
+  CollectionReference<Map<String, dynamic>> get _users =>
+      _firestore.collection('users');
+
+  Stream<List<PendingRegistration>> streamPendingRegistrations() {
+    return _users.where('status', isEqualTo: 'pending').snapshots().map(
+          (snapshot) => snapshot.docs
+              .map(
+                (doc) => PendingRegistration.fromMap({
+                  ...doc.data(),
+                  'uid': doc.id,
+                }),
+              )
+              .toList(),
+        );
+  }
+
+  Future<void> approveRegistration(String uid) async {
+    await _users.doc(uid).update({
+      'status': 'approved',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> rejectRegistration(String uid) async {
+    await _users.doc(uid).delete();
+  }
+
   Future<String> addStudent(StudentModel student) async {
     final docRef = student.studentId.isEmpty
         ? _students.doc()
@@ -522,6 +549,47 @@ class FirestoreService {
   }
 
   DateTime _dateTimeFromValue(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+}
+
+class PendingRegistration {
+  final String uid;
+  final String registrationNumber;
+  final String role;
+  final String districtId;
+  final String officerName;
+  final String mobile;
+  final String email;
+  final DateTime createdAt;
+
+  const PendingRegistration({
+    required this.uid,
+    required this.registrationNumber,
+    required this.role,
+    required this.districtId,
+    required this.officerName,
+    required this.mobile,
+    required this.email,
+    required this.createdAt,
+  });
+
+  factory PendingRegistration.fromMap(Map<String, dynamic> map) {
+    return PendingRegistration(
+      uid: map['uid'] as String? ?? '',
+      registrationNumber: map['registrationNumber'] as String? ?? '',
+      role: map['role'] as String? ?? '',
+      districtId: map['districtId'] as String? ?? '',
+      officerName: map['officerName'] as String? ?? map['name'] as String? ?? '',
+      mobile: map['mobile'] as String? ?? map['phone'] as String? ?? '',
+      email: map['email'] as String? ?? '',
+      createdAt: _dateTimeFromValue(map['createdAt']),
+    );
+  }
+
+  static DateTime _dateTimeFromValue(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     return DateTime.fromMillisecondsSinceEpoch(0);

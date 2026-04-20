@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../app/routes/role_navigation.dart';
+import '../../../../core/constants/registration_constants.dart';
+import 'approval_pending_page.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/home_logout_actions.dart';
 
 class RegistrationPage extends StatefulWidget {
   const RegistrationPage({super.key});
@@ -12,24 +15,6 @@ class RegistrationPage extends StatefulWidget {
 }
 
 class _RegistrationPageState extends State<RegistrationPage> {
-  static const List<String> _roles = [
-    'College',
-    'School',
-    'DEO',
-    'DIET',
-  ];
-
-  static const List<String> _districts = [
-    'Amritsar',
-    'Bathinda',
-    'Jalandhar',
-    'Ludhiana',
-    'Mansa',
-    'Patiala',
-    'Sangrur',
-    'SAS nagar',
-  ];
-
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _officerNameController = TextEditingController();
   final TextEditingController _mobileController = TextEditingController();
@@ -38,6 +23,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
   String? _selectedRole;
   String? _selectedDistrict;
+  String? _selectedCollegeId;
+  String? _selectedDietId;
 
   @override
   void dispose() {
@@ -54,20 +41,34 @@ class _RegistrationPageState extends State<RegistrationPage> {
     final authProvider = context.read<AuthProvider>();
 
     try {
-      final user = await authProvider.register(
+      final result = await authProvider.register(
         role: _selectedRole!,
         district: _selectedDistrict!,
         officerName: _officerNameController.text,
         mobile: _mobileController.text,
         email: _emailController.text,
         password: _passwordController.text,
+        collegeId: _selectedCollegeId,
+        dietId: _selectedDietId,
       );
 
       if (!mounted) return;
 
-      await RoleNavigation.navigateToDashboard(
-        context: context,
-        role: user.role,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Registration Number: ${result.registrationNumber}. '
+            '${RegistrationConstants.pendingApprovalMessage}',
+          ),
+        ),
+      );
+
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => ApprovalPendingPage(
+            registrationNumber: result.registrationNumber,
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
@@ -85,7 +86,10 @@ class _RegistrationPageState extends State<RegistrationPage> {
     final isLoading = context.watch<AuthProvider>().isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Register')),
+      appBar: AppBar(
+        title: const Text('Register'),
+        actions: const [HomeLogoutActions()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -102,7 +106,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                       labelText: 'Role',
                       border: OutlineInputBorder(),
                     ),
-                    items: _roles
+                    items: RegistrationConstants.roles
                         .map(
                           (role) => DropdownMenuItem<String>(
                             value: role,
@@ -112,7 +116,11 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         .toList(),
                     onChanged: isLoading
                         ? null
-                        : (value) => setState(() => _selectedRole = value),
+                        : (value) => setState(() {
+                              _selectedRole = value;
+                              _selectedCollegeId = null;
+                              _selectedDietId = null;
+                            }),
                     validator: _required,
                   ),
                   const SizedBox(height: 12),
@@ -122,7 +130,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                       labelText: 'District',
                       border: OutlineInputBorder(),
                     ),
-                    items: _districts
+                    items: RegistrationConstants.districts
                         .map(
                           (district) => DropdownMenuItem<String>(
                             value: district,
@@ -132,10 +140,42 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         .toList(),
                     onChanged: isLoading
                         ? null
-                        : (value) => setState(() => _selectedDistrict = value),
+                        : (value) => setState(() {
+                              _selectedDistrict = value;
+                              _selectedCollegeId = null;
+                              _selectedDietId = null;
+                            }),
                     validator: _required,
                   ),
                   const SizedBox(height: 12),
+                  if (_selectedRole == 'College') ...[
+                    _RoleEntityDropdown(
+                      label: 'College Name',
+                      collectionPath: 'colleges',
+                      districtId: _selectedDistrict,
+                      valueField: 'collegeId',
+                      value: _selectedCollegeId,
+                      enabled: !isLoading && _selectedDistrict != null,
+                      onChanged: (value) {
+                        setState(() => _selectedCollegeId = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_selectedRole == 'DIET') ...[
+                    _RoleEntityDropdown(
+                      label: 'DIET Name',
+                      collectionPath: 'diets',
+                      districtId: _selectedDistrict,
+                      valueField: 'dietId',
+                      value: _selectedDietId,
+                      enabled: !isLoading && _selectedDistrict != null,
+                      onChanged: (value) {
+                        setState(() => _selectedDietId = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   TextFormField(
                     controller: _officerNameController,
                     decoration: const InputDecoration(
@@ -200,5 +240,74 @@ class _RegistrationPageState extends State<RegistrationPage> {
     }
 
     return null;
+  }
+}
+
+class _RoleEntityDropdown extends StatelessWidget {
+  const _RoleEntityDropdown({
+    required this.label,
+    required this.collectionPath,
+    required this.districtId,
+    required this.valueField,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String collectionPath;
+  final String? districtId;
+  final String valueField;
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedDistrict = districtId;
+    final stream = selectedDistrict == null
+        ? null
+        : FirebaseFirestore.instance
+            .collection(collectionPath)
+            .where('districtId', isEqualTo: selectedDistrict)
+            .orderBy('name')
+            .snapshots();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        final docs = snapshot.data?.docs ?? [];
+
+        return DropdownButtonFormField<String>(
+          value: value,
+          decoration: InputDecoration(
+            labelText: label,
+            border: const OutlineInputBorder(),
+          ),
+          items: docs
+              .map(
+                (doc) => DropdownMenuItem<String>(
+                  value: doc.data()[valueField] as String? ?? doc.id,
+                  child: Text(doc.data()['name'] as String? ?? doc.id),
+                ),
+              )
+              .toList(),
+          onChanged: enabled && !snapshot.hasError ? onChanged : null,
+          validator: (selectedValue) {
+            if (snapshot.hasError) {
+              return 'Unable to load $label';
+            }
+
+            if (selectedValue == null || selectedValue.trim().isEmpty) {
+              return snapshot.connectionState == ConnectionState.waiting
+                  ? 'Loading $label'
+                  : 'Required';
+            }
+
+            return null;
+          },
+        );
+      },
+    );
   }
 }

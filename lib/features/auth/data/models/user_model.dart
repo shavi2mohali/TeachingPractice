@@ -6,8 +6,11 @@ class UserModel {
   final String email;
   final String phone;
   final String role;
+  final String status;
+  final String? registrationNumber;
   final String? districtId;
   final String? collegeId;
+  final String? dietId;
   final String? schoolId;
   final bool isActive;
   final DateTime createdAt;
@@ -19,8 +22,11 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.role,
+    required this.status,
+    this.registrationNumber,
     this.districtId,
     this.collegeId,
+    this.dietId,
     this.schoolId,
     required this.isActive,
     required this.createdAt,
@@ -30,12 +36,15 @@ class UserModel {
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       uid: map['uid'] as String? ?? '',
-      name: map['name'] as String? ?? '',
+      name: map['name'] as String? ?? map['officerName'] as String? ?? '',
       email: map['email'] as String? ?? '',
-      phone: map['phone'] as String? ?? '',
+      phone: map['phone'] as String? ?? map['mobile'] as String? ?? '',
       role: map['role'] as String? ?? '',
+      status: map['status'] as String? ?? '',
+      registrationNumber: map['registrationNumber'] as String?,
       districtId: map['districtId'] as String?,
       collegeId: map['collegeId'] as String?,
+      dietId: map['dietId'] as String?,
       schoolId: map['schoolId'] as String?,
       isActive: map['isActive'] as bool? ?? true,
       createdAt: _dateTimeFromValue(map['createdAt']),
@@ -50,8 +59,11 @@ class UserModel {
       'email': email,
       'phone': phone,
       'role': role,
+      'status': status,
+      'registrationNumber': registrationNumber,
       'districtId': districtId,
       'collegeId': collegeId,
+      'dietId': dietId,
       'schoolId': schoolId,
       'isActive': isActive,
       'createdAt': Timestamp.fromDate(createdAt),

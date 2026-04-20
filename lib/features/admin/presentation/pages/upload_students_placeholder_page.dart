@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../admin_web/features/students/data/student_excel_parser.dart';
 import '../../../../admin_web/features/students/presentation/widgets/dynamic_map_data_table.dart';
+import '../../../auth/presentation/widgets/home_logout_actions.dart';
 
 class UploadStudentsPlaceholderPage extends StatefulWidget {
   const UploadStudentsPlaceholderPage({super.key});
@@ -59,7 +60,10 @@ class _UploadStudentsPlaceholderPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload Students')),
+      appBar: AppBar(
+        title: const Text('Upload Students'),
+        actions: const [HomeLogoutActions()],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(

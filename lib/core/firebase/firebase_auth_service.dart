@@ -2,7 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
+import '../constants/registration_constants.dart';
 import '../../features/auth/data/models/user_model.dart';
+
+class RegistrationResult {
+  final String registrationNumber;
+
+  const RegistrationResult({
+    required this.registrationNumber,
+  });
+}
 
 class FirebaseAuthService {
   FirebaseAuthService({
@@ -13,16 +22,19 @@ class FirebaseAuthService {
 
   final FirebaseAuth _firebaseAuth;
   final FirebaseFirestore _firestore;
+  static const String _adminEmail = 'admin@test.com';
 
   User? get currentFirebaseUser => _firebaseAuth.currentUser;
 
-  Future<UserModel> registerUser({
+  Future<RegistrationResult> registerUser({
     required String role,
     required String district,
     required String officerName,
     required String mobile,
     required String email,
     required String password,
+    String? collegeId,
+    String? dietId,
   }) async {
     final credential = await _firebaseAuth.createUserWithEmailAndPassword(
       email: email.trim(),
@@ -38,24 +50,26 @@ class FirebaseAuthService {
     }
 
     final normalizedRole = role.trim().toLowerCase();
+    final registrationNumber = _generateRegistrationNumber(firebaseUser.uid);
     final userData = {
       'uid': firebaseUser.uid,
+      'status': 'pending',
+      'registrationNumber': registrationNumber,
       'role': normalizedRole,
-      'district': district.trim(),
       'districtId': district.trim(),
       'officerName': officerName.trim(),
-      'name': officerName.trim(),
       'mobile': mobile.trim(),
-      'phone': mobile.trim(),
       'email': email.trim(),
-      'isActive': true,
+      if (collegeId != null && collegeId.trim().isNotEmpty)
+        'collegeId': collegeId.trim(),
+      if (dietId != null && dietId.trim().isNotEmpty) 'dietId': dietId.trim(),
       'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
     };
 
     await _firestore.collection('users').doc(firebaseUser.uid).set(userData);
+    await _firebaseAuth.signOut();
 
-    return fetchCurrentUserProfile(firebaseUser.uid);
+    return RegistrationResult(registrationNumber: registrationNumber);
   }
 
   Future<UserModel> loginAndFetchUserRole({
@@ -75,7 +89,19 @@ class FirebaseAuthService {
       );
     }
 
-    return fetchCurrentUserProfile(firebaseUser.uid);
+    await _ensureAdminProfileIfNeeded(firebaseUser);
+
+    final appUser = await fetchCurrentUserProfile(firebaseUser.uid);
+
+    if (appUser.status != 'approved') {
+      await _firebaseAuth.signOut();
+      throw FirebaseAuthException(
+        code: 'approval-pending',
+        message: RegistrationConstants.loginPendingMessage,
+      );
+    }
+
+    return appUser;
   }
 
   Future<UserModel> fetchCurrentUserProfile(String uid) async {
@@ -104,5 +130,41 @@ class FirebaseAuthService {
 
   Future<void> logout() async {
     await _firebaseAuth.signOut();
+  }
+
+  Future<void> _ensureAdminProfileIfNeeded(User firebaseUser) async {
+    if ((firebaseUser.email ?? '').trim().toLowerCase() != _adminEmail) {
+      return;
+    }
+
+    final userRef = _firestore.collection('users').doc(firebaseUser.uid);
+    final snapshot = await userRef.get();
+    final data = snapshot.data();
+
+    if (!snapshot.exists || data == null) {
+      await userRef.set({
+        'uid': firebaseUser.uid,
+        'status': 'approved',
+        'role': 'admin',
+        'districtId': '',
+        'officerName': 'Admin',
+        'mobile': '',
+        'email': _adminEmail,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    if (data['status'] != 'approved' || data['role'] != 'admin') {
+      await userRef.update({
+        'status': 'approved',
+        'role': 'admin',
+      });
+    }
+  }
+
+  String _generateRegistrationNumber(String uid) {
+    final suffix = uid.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    return 'TP2025-$suffix';
   }
 }

@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 
+import '../../../../core/constants/registration_constants.dart';
+
 Future<List<Map<String, dynamic>>> parseStudentExcel(Uint8List fileBytes) async {
   final excel = Excel.decodeBytes(fileBytes);
 
@@ -9,8 +11,8 @@ Future<List<Map<String, dynamic>>> parseStudentExcel(Uint8List fileBytes) async 
     return [];
   }
 
-  final firstSheetName = excel.tables.keys.first;
-  final sheet = excel.tables[firstSheetName];
+  const studentSheetName = '00 Ba O All filled DPEd 2025-27';
+  final sheet = excel.tables[studentSheetName] ?? excel.tables.values.first;
 
   if (sheet == null || sheet.rows.isEmpty) {
     return [];
@@ -27,8 +29,8 @@ Future<List<Map<String, dynamic>>> parseStudentExcel(Uint8List fileBytes) async 
     'Marks Obtained in 12th',
     'Total Marks 12th',
     '%age in 12th',
-    'DISTRICT NAME',
     'Result',
+    'DISTRICT NAME',
     'Joining status',
     'Station choice',
   ];
@@ -53,22 +55,43 @@ Future<List<Map<String, dynamic>>> parseStudentExcel(Uint8List fileBytes) async 
 
   for (var rowIndex = 1; rowIndex < sheet.rows.length; rowIndex++) {
     final row = sheet.rows[rowIndex];
-    final student = <String, dynamic>{};
+    final rawStudent = <String, dynamic>{};
 
     for (final header in requiredHeaders) {
       final columnIndex = headerIndexMap[_normalizeHeader(header)]!;
-      final value =
-          columnIndex < row.length ? _cellValue(row[columnIndex]) : null;
+      final value = columnIndex < row.length ? _cellValue(row[columnIndex]) : null;
 
-      student[header] = value;
+      rawStudent[header] = value;
     }
 
-    final hasAnyValue = student.values.any((value) {
+    final hasAnyValue = rawStudent.values.any((value) {
       return value != null && value.toString().trim().isNotEmpty;
     });
 
     if (hasAnyValue) {
-      students.add(student);
+      final registrationId = _stringValue(rawStudent['Registration Id']);
+      final districtName = _cellValueAt(row, 11) ?? rawStudent['DISTRICT NAME'];
+      final collegeId = _stringValue(_lastCellValue(row));
+
+      students.add({
+        'studentId': registrationId,
+        'registrationId': registrationId,
+        'name': _stringValue(rawStudent['Name']),
+        'dob': rawStudent['DOB'],
+        'fatherName': _stringValue(rawStudent['Father Name']),
+        'motherName': _stringValue(rawStudent['Mother Name']),
+        'categoryName': _stringValue(rawStudent['Category Name']),
+        'allotedCategory': _stringValue(rawStudent['Alloted category']),
+        'marks12th': rawStudent['Marks Obtained in 12th'],
+        'totalMarks12th': rawStudent['Total Marks 12th'],
+        'percentage12th': rawStudent['%age in 12th'],
+        'districtId': _districtId(districtName),
+        'result': _stringValue(rawStudent['Result']),
+        'joiningStatus': _stringValue(rawStudent['Joining status']),
+        'stationChoice': _stringValue(rawStudent['Station choice']),
+        'collegeId': collegeId,
+        'status': 'created',
+      });
     }
   }
 
@@ -104,5 +127,38 @@ dynamic _cellValue(Data? cell) {
     );
   }
 
+  return value.toString().trim();
+}
+
+dynamic _cellValueAt(List<Data?> row, int index) {
+  return index < row.length ? _cellValue(row[index]) : null;
+}
+
+dynamic _lastCellValue(List<Data?> row) {
+  for (var index = row.length - 1; index >= 0; index--) {
+    final value = _cellValue(row[index]);
+    if (value != null && value.toString().trim().isNotEmpty) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+String _districtId(dynamic value) {
+  final district = _stringValue(value);
+  final normalizedDistrict = _normalizeHeader(district);
+
+  for (final allowedDistrict in RegistrationConstants.districts) {
+    if (_normalizeHeader(allowedDistrict) == normalizedDistrict) {
+      return allowedDistrict;
+    }
+  }
+
+  return district;
+}
+
+String _stringValue(dynamic value) {
+  if (value == null) return '';
   return value.toString().trim();
 }

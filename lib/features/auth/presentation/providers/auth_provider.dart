@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../../core/firebase/firebase_auth_service.dart';
 import '../../data/models/user_model.dart';
@@ -17,30 +18,34 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  Future<UserModel> register({
+  Future<RegistrationResult> register({
     required String role,
     required String district,
     required String officerName,
     required String mobile,
     required String email,
     required String password,
+    String? collegeId,
+    String? dietId,
   }) async {
     _setLoading(true);
     _errorMessage = null;
 
     try {
-      final user = await _authService.registerUser(
+      final result = await _authService.registerUser(
         role: role,
         district: district,
         officerName: officerName,
         mobile: mobile,
         email: email,
         password: password,
+        collegeId: collegeId,
+        dietId: dietId,
       );
-      _currentUser = user;
-      return user;
+      _currentUser = null;
+      return result;
     } catch (error) {
-      _errorMessage = error.toString();
+      _errorMessage = _messageFromError(error);
       rethrow;
     } finally {
       _setLoading(false);
@@ -62,7 +67,7 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = user;
       return user;
     } catch (error) {
-      _errorMessage = error.toString();
+      _errorMessage = _messageFromError(error);
       rethrow;
     } finally {
       _setLoading(false);
@@ -78,5 +83,13 @@ class AuthProvider extends ChangeNotifier {
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
+  }
+
+  String _messageFromError(Object error) {
+    if (error is FirebaseAuthException && error.message != null) {
+      return error.message!;
+    }
+
+    return error.toString();
   }
 }

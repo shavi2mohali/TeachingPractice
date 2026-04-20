@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../../admin/pending_registrations_screen.dart';
+import '../../../../admin_web/features/students/presentation/pages/student_excel_upload_page.dart';
+import '../../../auth/presentation/widgets/home_logout_actions.dart';
+import '../../../students/presentation/pages/view_students_page.dart';
 import 'manage_schools_placeholder_page.dart';
-import 'upload_students_placeholder_page.dart';
 import 'view_proposals_placeholder_page.dart';
 
 class AdminDashboard extends StatelessWidget {
@@ -12,6 +15,7 @@ class AdminDashboard extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Panel'),
+        actions: const [HomeLogoutActions()],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -20,7 +24,7 @@ class AdminDashboard extends StatelessWidget {
             padding: const EdgeInsets.all(24),
             child: GridView.count(
               shrinkWrap: true,
-              crossAxisCount: 3,
+              crossAxisCount: 5,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
               childAspectRatio: 1.4,
@@ -30,7 +34,15 @@ class AdminDashboard extends StatelessWidget {
                   icon: Icons.upload_file,
                   onTap: () => _openPage(
                     context,
-                    const UploadStudentsPlaceholderPage(),
+                    const StudentExcelUploadPage(),
+                  ),
+                ),
+                _AdminHomeCard(
+                  title: 'View Students',
+                  icon: Icons.people_outline,
+                  onTap: () => _openPage(
+                    context,
+                    const ViewStudentsPage(),
                   ),
                 ),
                 _AdminHomeCard(
@@ -47,6 +59,14 @@ class AdminDashboard extends StatelessWidget {
                   onTap: () => _openPage(
                     context,
                     const ViewProposalsPlaceholderPage(),
+                  ),
+                ),
+                _AdminHomeCard(
+                  title: 'Pending Registrations',
+                  icon: Icons.how_to_reg_outlined,
+                  onTap: () => _openPage(
+                    context,
+                    const PendingRegistrationsScreen(),
                   ),
                 ),
               ],

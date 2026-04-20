@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'login_page.dart';
 import 'registration_page.dart';
+import '../widgets/home_logout_actions.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -13,6 +14,9 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        actions: const [HomeLogoutActions()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
