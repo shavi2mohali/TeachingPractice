@@ -17,6 +17,36 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
+  Future<UserModel> register({
+    required String role,
+    required String district,
+    required String officerName,
+    required String mobile,
+    required String email,
+    required String password,
+  }) async {
+    _setLoading(true);
+    _errorMessage = null;
+
+    try {
+      final user = await _authService.registerUser(
+        role: role,
+        district: district,
+        officerName: officerName,
+        mobile: mobile,
+        email: email,
+        password: password,
+      );
+      _currentUser = user;
+      return user;
+    } catch (error) {
+      _errorMessage = error.toString();
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<UserModel> login({
     required String email,
     required String password,

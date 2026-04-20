@@ -16,6 +16,48 @@ class FirebaseAuthService {
 
   User? get currentFirebaseUser => _firebaseAuth.currentUser;
 
+  Future<UserModel> registerUser({
+    required String role,
+    required String district,
+    required String officerName,
+    required String mobile,
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+
+    final firebaseUser = credential.user;
+    if (firebaseUser == null) {
+      throw FirebaseAuthException(
+        code: 'missing-user',
+        message: 'Registration completed but no Firebase user was returned.',
+      );
+    }
+
+    final normalizedRole = role.trim().toLowerCase();
+    final userData = {
+      'uid': firebaseUser.uid,
+      'role': normalizedRole,
+      'district': district.trim(),
+      'districtId': district.trim(),
+      'officerName': officerName.trim(),
+      'name': officerName.trim(),
+      'mobile': mobile.trim(),
+      'phone': mobile.trim(),
+      'email': email.trim(),
+      'isActive': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    await _firestore.collection('users').doc(firebaseUser.uid).set(userData);
+
+    return fetchCurrentUserProfile(firebaseUser.uid);
+  }
+
   Future<UserModel> loginAndFetchUserRole({
     required String email,
     required String password,
