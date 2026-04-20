@@ -14,6 +14,7 @@ class RegistrationConstants {
     'Mansa',
     'Patiala',
     'Sangrur',
+    'SAS Nagar',
   ];
 
   static const String pendingApprovalMessage =

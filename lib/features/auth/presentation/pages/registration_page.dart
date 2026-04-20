@@ -149,13 +149,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   ),
                   const SizedBox(height: 12),
                   if (_selectedRole == 'College') ...[
-                    _RoleEntityDropdown(
-                      label: 'College Name',
-                      collectionPath: 'colleges',
-                      districtId: _selectedDistrict,
-                      valueField: 'collegeId',
+                    _CollegeNameDropdown(
                       value: _selectedCollegeId,
-                      enabled: !isLoading && _selectedDistrict != null,
+                      enabled: !isLoading,
                       onChanged: (value) {
                         setState(() => _selectedCollegeId = value);
                       },
@@ -167,6 +163,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                       label: 'DIET Name',
                       collectionPath: 'diets',
                       districtId: _selectedDistrict,
+                      filterByDistrict: true,
                       valueField: 'dietId',
                       value: _selectedDietId,
                       enabled: !isLoading && _selectedDistrict != null,
@@ -243,11 +240,77 @@ class _RegistrationPageState extends State<RegistrationPage> {
   }
 }
 
+class _CollegeNameDropdown extends StatelessWidget {
+  const _CollegeNameDropdown({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('colleges').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text('Unable to load colleges: ${snapshot.error}');
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+
+        final colleges = snapshot.data?.docs ?? [];
+
+        if (colleges.isEmpty) {
+          return const Text('No colleges found');
+        }
+
+        final selectedValue = colleges.any((doc) {
+          final collegeId = doc.data()['collegeId'] as String? ?? doc.id;
+          return collegeId == value;
+        })
+            ? value
+            : null;
+
+        return DropdownButtonFormField<String>(
+          value: selectedValue,
+          decoration: const InputDecoration(
+            labelText: 'College Name',
+            border: OutlineInputBorder(),
+          ),
+          items: colleges
+              .map(
+                (doc) => DropdownMenuItem<String>(
+                  value: doc.data()['collegeId'] as String? ?? doc.id,
+                  child: Text(doc.data()['name'] as String? ?? doc.id),
+                ),
+              )
+              .toList(),
+          onChanged: enabled ? onChanged : null,
+          validator: (selectedValue) {
+            if (selectedValue == null || selectedValue.trim().isEmpty) {
+              return 'Required';
+            }
+
+            return null;
+          },
+        );
+      },
+    );
+  }
+}
+
 class _RoleEntityDropdown extends StatelessWidget {
   const _RoleEntityDropdown({
     required this.label,
     required this.collectionPath,
     required this.districtId,
+    required this.filterByDistrict,
     required this.valueField,
     required this.value,
     required this.enabled,
@@ -257,6 +320,7 @@ class _RoleEntityDropdown extends StatelessWidget {
   final String label;
   final String collectionPath;
   final String? districtId;
+  final bool filterByDistrict;
   final String valueField;
   final String? value;
   final bool enabled;
@@ -265,13 +329,14 @@ class _RoleEntityDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selectedDistrict = districtId;
-    final stream = selectedDistrict == null
-        ? null
-        : FirebaseFirestore.instance
-            .collection(collectionPath)
-            .where('districtId', isEqualTo: selectedDistrict)
-            .orderBy('name')
-            .snapshots();
+    final collection = FirebaseFirestore.instance.collection(collectionPath);
+    final stream = filterByDistrict
+        ? selectedDistrict == null
+            ? null
+            : collection
+                .where('districtId', isEqualTo: selectedDistrict)
+                .snapshots()
+        : collection.snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: stream,
@@ -279,6 +344,7 @@ class _RoleEntityDropdown extends StatelessWidget {
         final docs = snapshot.data?.docs ?? [];
 
         return DropdownButtonFormField<String>(
+          key: ValueKey('$collectionPath-$selectedDistrict-$filterByDistrict'),
           value: value,
           decoration: InputDecoration(
             labelText: label,
@@ -288,14 +354,24 @@ class _RoleEntityDropdown extends StatelessWidget {
               .map(
                 (doc) => DropdownMenuItem<String>(
                   value: doc.data()[valueField] as String? ?? doc.id,
-                  child: Text(doc.data()['name'] as String? ?? doc.id),
+                  child: Text(
+                    doc.data()['name'] as String? ??
+                        doc.data()['shortName'] as String? ??
+                        doc.id,
+                  ),
                 ),
               )
               .toList(),
-          onChanged: enabled && !snapshot.hasError ? onChanged : null,
+          onChanged:
+              enabled && !snapshot.hasError && docs.isNotEmpty ? onChanged : null,
           validator: (selectedValue) {
             if (snapshot.hasError) {
               return 'Unable to load $label';
+            }
+
+            if (filterByDistrict &&
+                (selectedDistrict == null || selectedDistrict.trim().isEmpty)) {
+              return 'Select district first';
             }
 
             if (selectedValue == null || selectedValue.trim().isEmpty) {

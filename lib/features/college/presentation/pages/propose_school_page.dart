@@ -6,10 +6,16 @@ import '../../../admin/data/models/school_model.dart';
 import '../../../admin/data/models/student_model.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../data/models/proposal_model.dart';
 
 class ProposeSchoolPage extends StatefulWidget {
-  const ProposeSchoolPage({super.key});
+  const ProposeSchoolPage({
+    super.key,
+    this.initialStudentId,
+  });
+
+  final String? initialStudentId;
 
   @override
   State<ProposeSchoolPage> createState() => _ProposeSchoolPageState();
@@ -21,6 +27,12 @@ class _ProposeSchoolPageState extends State<ProposeSchoolPage> {
   String? _selectedStudentId;
   String? _selectedSchoolId;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedStudentId = widget.initialStudentId;
+  }
 
   Future<void> _submitProposal(AppUserContext userContext) async {
     final studentId = _selectedStudentId;
@@ -96,7 +108,10 @@ class _ProposeSchoolPageState extends State<ProposeSchoolPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Propose School')),
+      appBar: AppBar(
+        title: const Text('Propose School'),
+        actions: const [HomeLogoutActions()],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
