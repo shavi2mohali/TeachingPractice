@@ -9,6 +9,8 @@ class HomeLogoutActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = context.watch<AuthProvider>().currentUser;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -16,16 +18,17 @@ class HomeLogoutActions extends StatelessWidget {
           onPressed: () => _goHome(context),
           child: const Text('Home'),
         ),
-        TextButton(
-          onPressed: () async {
-            await context.read<AuthProvider>().logout();
+        if (currentUser != null)
+          TextButton(
+            onPressed: () async {
+              await context.read<AuthProvider>().logout();
 
-            if (!context.mounted) return;
+              if (!context.mounted) return;
 
-            _goHome(context);
-          },
-          child: const Text('Logout'),
-        ),
+              _goHome(context);
+            },
+            child: const Text('Logout'),
+          ),
       ],
     );
   }

@@ -174,21 +174,6 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  if (_selectedRole == 'DIET') ...[
-                    _RoleEntityDropdown(
-                      label: 'DIET Name',
-                      collectionPath: 'diets',
-                      districtId: _selectedDistrict,
-                      filterByDistrict: true,
-                      valueField: 'dietId',
-                      value: _selectedDietId,
-                      enabled: !isLoading && _selectedDistrict != null,
-                      onChanged: (value) {
-                        setState(() => _selectedDietId = value);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   TextFormField(
                     controller: _officerNameController,
                     decoration: const InputDecoration(

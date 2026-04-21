@@ -17,6 +17,7 @@ class ProposalReviewPage extends StatefulWidget {
 class _ProposalReviewPageState extends State<ProposalReviewPage> {
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _districtController = TextEditingController();
+  final Map<String, String> _selectedSchoolIds = {};
   final Set<String> _processingProposalIds = {};
   String? _districtFilter;
   bool _hasInitializedDistrict = false;
@@ -44,6 +45,9 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
     required ProposalModel proposal,
     required String reviewedBy,
   }) async {
+    final selectedSchoolId =
+        _selectedSchoolIds[proposal.proposalId] ?? proposal.proposedSchoolId;
+
     await _runProposalAction(
       proposalId: proposal.proposalId,
       successMessage: 'Proposal approved',
@@ -51,6 +55,7 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
         proposalId: proposal.proposalId,
         studentId: proposal.studentId,
         reviewedBy: reviewedBy,
+        schoolId: selectedSchoolId,
       ),
     );
   }
@@ -149,11 +154,29 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<List<ProposalModel>>(
-              stream: _firestoreService.streamPendingProposalsByDistrict(
-                districtId,
-              ),
-              builder: (context, snapshot) {
+            child: StreamBuilder<List<SchoolModel>>(
+              stream: _firestoreService.streamSchoolsByDistrict(districtId),
+              builder: (context, schoolSnapshot) {
+                if (schoolSnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (schoolSnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Unable to load schools: ${schoolSnapshot.error}',
+                    ),
+                  );
+                }
+
+                final schools = schoolSnapshot.data ?? [];
+
+                return StreamBuilder<List<ProposalModel>>(
+                  stream: _firestoreService.streamPendingProposalsByDistrict(
+                    districtId,
+                  ),
+                  builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
@@ -210,9 +233,19 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
 
                         return _ProposalCard(
                           details: details,
+                          schools: schools,
+                          selectedSchoolId:
+                              _selectedSchoolIds[proposal.proposalId],
                           isProcessing: _processingProposalIds.contains(
                             proposal.proposalId,
                           ),
+                          onSchoolChanged: (schoolId) {
+                            if (schoolId == null) return;
+                            setState(() {
+                              _selectedSchoolIds[proposal.proposalId] =
+                                  schoolId;
+                            });
+                          },
                           onApprove: () => _approveProposal(
                             proposal: proposal,
                             reviewedBy: reviewedBy,
@@ -227,6 +260,8 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
                   },
                 );
               },
+                );
+              },
             ),
           ),
         ],
@@ -238,13 +273,19 @@ class _ProposalReviewPageState extends State<ProposalReviewPage> {
 class _ProposalCard extends StatelessWidget {
   const _ProposalCard({
     required this.details,
+    required this.schools,
+    required this.selectedSchoolId,
     required this.isProcessing,
+    required this.onSchoolChanged,
     required this.onApprove,
     required this.onReject,
   });
 
   final _ProposalDetails details;
+  final List<SchoolModel> schools;
+  final String? selectedSchoolId;
   final bool isProcessing;
+  final ValueChanged<String?> onSchoolChanged;
   final VoidCallback onApprove;
   final VoidCallback onReject;
 
@@ -252,6 +293,14 @@ class _ProposalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final student = details.student;
     final school = details.school;
+    final proposal = details.proposal;
+    final dropdownValue = schools.any(
+      (school) => school.schoolId == selectedSchoolId,
+    )
+        ? selectedSchoolId
+        : schools.any((school) => school.schoolId == proposal.proposedSchoolId)
+            ? proposal.proposedSchoolId
+            : null;
 
     return Card(
       child: Padding(
@@ -267,6 +316,23 @@ class _ProposalCard extends StatelessWidget {
             Text('Registration: ${student?.registrationNumber ?? '-'}'),
             Text('School: ${school?.name ?? 'School not found'}'),
             Text('Status: ${details.proposal.status}'),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: dropdownValue,
+              decoration: const InputDecoration(
+                labelText: 'DEO assigned school',
+                border: OutlineInputBorder(),
+              ),
+              items: schools
+                  .map(
+                    (school) => DropdownMenuItem<String>(
+                      value: school.schoolId,
+                      child: Text(school.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: isProcessing ? null : onSchoolChanged,
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

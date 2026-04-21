@@ -87,9 +87,7 @@ class FirestoreService {
 
   Future<List<SchoolModel>> getSchoolsByDistrict(String districtId) async {
     final snapshot = await _schools
-        .where('districtId', isEqualTo: districtId)
-        .where('isActive', isEqualTo: true)
-        .orderBy('name')
+        .where('districtId', isEqualTo: districtId.trim().toUpperCase())
         .get();
 
     return snapshot.docs
@@ -99,9 +97,7 @@ class FirestoreService {
 
   Stream<List<SchoolModel>> streamSchoolsByDistrict(String districtId) {
     return _schools
-        .where('districtId', isEqualTo: districtId)
-        .where('isActive', isEqualTo: true)
-        .orderBy('name')
+        .where('districtId', isEqualTo: districtId.trim().toUpperCase())
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -116,15 +112,14 @@ class FirestoreService {
   }
 
   Stream<List<SchoolModel>> streamSchools({String? districtId}) {
-    Query<Map<String, dynamic>> query =
-        _schools.where('isActive', isEqualTo: true);
+    Query<Map<String, dynamic>> query = _schools;
 
     final filter = districtId?.trim();
     if (filter != null && filter.isNotEmpty) {
-      query = query.where('districtId', isEqualTo: filter);
+      query = query.where('districtId', isEqualTo: filter.toUpperCase());
     }
 
-    return query.orderBy('name').snapshots().map(
+    return query.snapshots().map(
           (snapshot) => snapshot.docs
               .map(
                 (doc) => SchoolModel.fromMap({
@@ -324,6 +319,7 @@ class FirestoreService {
     required String proposalId,
     required String studentId,
     required String reviewedBy,
+    String? schoolId,
   }) async {
     final proposalRef = _proposals.doc(proposalId);
     final studentRef = _students.doc(studentId);
@@ -334,11 +330,15 @@ class FirestoreService {
         'reviewedBy': reviewedBy,
         'reviewedAt': Timestamp.now(),
         'rejectionReason': null,
+        if (schoolId != null && schoolId.isNotEmpty)
+          'proposedSchoolId': schoolId,
         'updatedAt': Timestamp.now(),
       });
 
       transaction.update(studentRef, {
         'status': 'deoApproved',
+        if (schoolId != null && schoolId.isNotEmpty)
+          'proposedSchoolId': schoolId,
         'updatedAt': Timestamp.now(),
       });
     });

@@ -1,1 +1,36 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"teachingpracticedata","appId":"1:150059241358:android:0f328f506146ca51b75edf","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"teachingpracticedata","configurations":{"android":"1:150059241358:android:0f328f506146ca51b75edf","web":"1:150059241358:web:c6fae655eca6354bb75edf"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "teachingpracticedata",
+          "appId": "1:150059241358:android:0f328f506146ca51b75edf",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "teachingpracticedata",
+          "configurations": {
+            "android": "1:150059241358:android:0f328f506146ca51b75edf",
+            "web": "1:150059241358:web:c6fae655eca6354bb75edf"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
