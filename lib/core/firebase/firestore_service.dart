@@ -87,7 +87,7 @@ class FirestoreService {
 
   Future<List<SchoolModel>> getSchoolsByDistrict(String districtId) async {
     final snapshot = await _schools
-        .where('districtId', isEqualTo: districtId.trim().toUpperCase())
+        .where('districtId', isEqualTo: districtId.trim())
         .get();
 
     return snapshot.docs
@@ -97,7 +97,7 @@ class FirestoreService {
 
   Stream<List<SchoolModel>> streamSchoolsByDistrict(String districtId) {
     return _schools
-        .where('districtId', isEqualTo: districtId.trim().toUpperCase())
+        .where('districtId', isEqualTo: districtId.trim())
         .snapshots()
         .map(
           (snapshot) => snapshot.docs
@@ -116,7 +116,7 @@ class FirestoreService {
 
     final filter = districtId?.trim();
     if (filter != null && filter.isNotEmpty) {
-      query = query.where('districtId', isEqualTo: filter.toUpperCase());
+      query = query.where('districtId', isEqualTo: filter);
     }
 
     return query.snapshots().map(

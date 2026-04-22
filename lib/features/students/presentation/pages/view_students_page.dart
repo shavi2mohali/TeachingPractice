@@ -101,36 +101,45 @@ class _StudentsTableState extends State<_StudentsTable> {
   final FirestoreService _firestoreService = FirestoreService();
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
-  final TextEditingController _schoolSearchController = TextEditingController();
-  final Set<String> _selectedStudentIds = <String>{};
   final Set<String> _processingStudentIds = <String>{};
+  final Set<String> _confirmedStudentIds = <String>{};
   String? _selectedSchoolId;
-  String _schoolSearchText = '';
+
+  static const List<_StudentColumn> _fixedColumns = [
+    _StudentColumn('Registration Id', ['registrationId', 'studentId']),
+    _StudentColumn('Name', ['name']),
+    _StudentColumn('DOB', ['dob', 'dateOfBirth']),
+    _StudentColumn('Father Name', ['fatherName']),
+    _StudentColumn('Mother Name', ['motherName']),
+    _StudentColumn('Category Name', ['categoryName']),
+    _StudentColumn('Alloted category', ['allotedCategory']),
+    _StudentColumn('Marks Obtained in 12th', ['marks12th']),
+    _StudentColumn('Total Marks 12th', ['totalMarks12th']),
+    _StudentColumn('%age in 12th', ['percentage12th']),
+    _StudentColumn('DISTRICT NAME', ['districtId']),
+    _StudentColumn('College District name', ['collegeDistrictName']),
+    _StudentColumn('Result', ['result']),
+    _StudentColumn('Joining status', ['joiningStatus']),
+    _StudentColumn('Station choice', ['stationChoice']),
+    _StudentColumn('CollegeId', ['collegeId']),
+  ];
 
   @override
   void dispose() {
     _horizontalController.dispose();
     _verticalController.dispose();
-    _schoolSearchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final columns = _studentColumns();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.isCollegeRole) ...[
-          _CollegeSchoolSearch(
+          _CollegeSchoolPicker(
             districtId: widget.user?.districtId ?? '',
-            controller: _schoolSearchController,
-            searchText: _schoolSearchText,
             selectedSchoolId: _selectedSchoolId,
-            onSearchChanged: (value) {
-              setState(() => _schoolSearchText = value);
-            },
             onSchoolChanged: (value) {
               setState(() => _selectedSchoolId = value);
             },
@@ -158,14 +167,12 @@ class _StudentsTableState extends State<_StudentsTable> {
                   child: DataTable(
                     columns: [
                       const DataColumn(label: Text('Sr. No.')),
-                      if (!widget.isCollegeRole)
-                        const DataColumn(label: Text('Select')),
                       if (widget.isCollegeRole)
                         const DataColumn(label: Text('Action')),
-                      ...columns.map(
+                      ..._fixedColumns.map(
                         (column) => DataColumn(
                           label: Text(
-                            column,
+                            column.label,
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -180,7 +187,6 @@ class _StudentsTableState extends State<_StudentsTable> {
                               context: context,
                               serialNumber: entry.key + 1,
                               student: entry.value,
-                              columns: columns,
                             ),
                           ),
                         )
@@ -195,59 +201,39 @@ class _StudentsTableState extends State<_StudentsTable> {
     );
   }
 
-  List<String> _studentColumns() {
-    final columns = <String>{};
-
-    for (final student in widget.students) {
-      columns.addAll(student.data().keys);
-    }
-
-    return columns.toList()..sort();
-  }
-
   List<DataCell> _studentCells({
     required BuildContext context,
     required int serialNumber,
     required QueryDocumentSnapshot<Map<String, dynamic>> student,
-    required List<String> columns,
   }) {
-    final studentId = student.id;
+    final studentData = student.data();
+    final studentId = _studentIdentifier(student);
+    final isProcessing = _processingStudentIds.contains(studentId);
+    final isConfirmed = _confirmedStudentIds.contains(studentId);
 
     return [
       DataCell(Text(serialNumber.toString())),
-      if (!widget.isCollegeRole)
-        DataCell(
-          Checkbox(
-            value: _selectedStudentIds.contains(studentId),
-            onChanged: (value) {
-              setState(() {
-                if (value ?? false) {
-                  _selectedStudentIds.add(studentId);
-                } else {
-                  _selectedStudentIds.remove(studentId);
-                }
-              });
-            },
-          ),
-        ),
       if (widget.isCollegeRole)
         DataCell(
           FilledButton(
-            onPressed: _processingStudentIds.contains(studentId)
+            onPressed: isProcessing || isConfirmed
                 ? null
                 : () => _confirmProposal(context, student),
-            child: _processingStudentIds.contains(studentId)
+            style: FilledButton.styleFrom(
+              backgroundColor: isConfirmed ? Colors.grey : null,
+            ),
+            child: isProcessing
                 ? const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Confirm'),
+                : Text(isConfirmed ? 'Confirmed' : 'Confirm'),
           ),
         ),
-      ...columns.map(
+      ..._fixedColumns.map(
         (column) => DataCell(
-          Text(_formatValue(student.data()[column])),
+          Text(_formatValue(_columnValue(studentData, column.keys))),
         ),
       ),
     ];
@@ -290,6 +276,8 @@ class _StudentsTableState extends State<_StudentsTable> {
 
       if (!context.mounted) return;
 
+      setState(() => _confirmedStudentIds.add(studentId));
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Proposal sent to DEO')),
       );
@@ -306,6 +294,24 @@ class _StudentsTableState extends State<_StudentsTable> {
     }
   }
 
+  dynamic _columnValue(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  String _studentIdentifier(QueryDocumentSnapshot<Map<String, dynamic>> student) {
+    final data = student.data();
+    return data['studentId'] as String? ??
+        data['registrationId'] as String? ??
+        student.id;
+  }
+
   String _formatValue(dynamic value) {
     if (value == null) return '';
     if (value is Timestamp) return value.toDate().toString();
@@ -313,21 +319,15 @@ class _StudentsTableState extends State<_StudentsTable> {
   }
 }
 
-class _CollegeSchoolSearch extends StatelessWidget {
-  const _CollegeSchoolSearch({
+class _CollegeSchoolPicker extends StatelessWidget {
+  const _CollegeSchoolPicker({
     required this.districtId,
-    required this.controller,
-    required this.searchText,
     required this.selectedSchoolId,
-    required this.onSearchChanged,
     required this.onSchoolChanged,
   });
 
   final String districtId;
-  final TextEditingController controller;
-  final String searchText;
   final String? selectedSchoolId;
-  final ValueChanged<String> onSearchChanged;
   final ValueChanged<String?> onSchoolChanged;
 
   @override
@@ -336,63 +336,54 @@ class _CollegeSchoolSearch extends StatelessWidget {
       return const Text('District is not assigned to this college');
     }
 
-    final schoolDistrictId = districtId.trim().toUpperCase();
+    final selectedDistrict = districtId.trim();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('schools')
-          .where('districtId', isEqualTo: schoolDistrictId)
+          .where('districtId', isEqualTo: selectedDistrict)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Text('Unable to load schools: ${snapshot.error}');
         }
 
-        final allSchools = snapshot.data?.docs ?? [];
-        final normalizedSearch = searchText.trim().toLowerCase();
-        final schools = normalizedSearch.isEmpty
-            ? allSchools
-            : allSchools.where((doc) {
-                final name = doc.data()['name'] as String? ?? '';
-                return name.toLowerCase().contains(normalizedSearch);
-              }).toList();
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+
+        final schools = (snapshot.data?.docs ?? [])
+            .toList()
+          ..sort((a, b) {
+            final firstName = a.data()['name'] as String? ?? '';
+            final secondName = b.data()['name'] as String? ?? '';
+            return firstName.toLowerCase().compareTo(secondName.toLowerCase());
+          });
+
+        if (schools.isEmpty) {
+          return const Text('No schools found for this district');
+        }
 
         final selectedValue = schools.any((doc) => _schoolId(doc) == selectedSchoolId)
             ? selectedSchoolId
             : null;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Search schools by name',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: onSearchChanged,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: selectedValue,
-              decoration: const InputDecoration(
-                labelText: 'Select school for proposal',
-                border: OutlineInputBorder(),
-              ),
-              items: schools
-                  .map(
-                    (doc) => DropdownMenuItem<String>(
-                      value: _schoolId(doc),
-                      child: Text(doc.data()['name'] as String? ?? doc.id),
-                    ),
-                  )
-                  .toList(),
-              onChanged:
-                  snapshot.connectionState == ConnectionState.waiting
-                      ? null
-                      : onSchoolChanged,
-            ),
-          ],
+        return DropdownButtonFormField<String>(
+          key: ValueKey('college-school-$selectedDistrict'),
+          value: selectedValue,
+          decoration: const InputDecoration(
+            labelText: 'Select school for proposal',
+            border: OutlineInputBorder(),
+          ),
+          items: schools
+              .map(
+                (doc) => DropdownMenuItem<String>(
+                  value: _schoolId(doc),
+                  child: Text(doc.data()['name'] as String? ?? doc.id),
+                ),
+              )
+              .toList(),
+          onChanged: onSchoolChanged,
         );
       },
     );
@@ -402,4 +393,11 @@ class _CollegeSchoolSearch extends StatelessWidget {
     final data = doc.data();
     return data['schoolId'] as String? ?? data['udise'] as String? ?? doc.id;
   }
+}
+
+class _StudentColumn {
+  const _StudentColumn(this.label, this.keys);
+
+  final String label;
+  final List<String> keys;
 }

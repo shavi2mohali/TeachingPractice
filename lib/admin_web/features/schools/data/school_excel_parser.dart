@@ -42,10 +42,12 @@ Future<List<Map<String, dynamic>>> parseSchoolExcel(Uint8List fileBytes) async {
   for (var rowIndex = 1; rowIndex < sheet.rows.length; rowIndex++) {
     final row = sheet.rows[rowIndex];
     final udise = _stringValue(_readCell(row, headerIndexMap, 'UDISE'));
-    final districtId = _stringValue(
-      _readCell(row, headerIndexMap, 'DISTRICT_NAME'),
-    ).toUpperCase();
-    final name = _stringValue(_readCell(row, headerIndexMap, 'School_Name'));
+    final districtId = _toTitleCase(
+      _stringValue(_readCell(row, headerIndexMap, 'DISTRICT_NAME')),
+    );
+    final name = _toTitleCase(
+      _stringValue(_readCell(row, headerIndexMap, 'School_Name')),
+    );
 
     if (udise.isEmpty && districtId.isEmpty && name.isEmpty) {
       continue;
@@ -106,4 +108,50 @@ dynamic _cellValue(Data? cell) {
 String _stringValue(dynamic value) {
   if (value == null) return '';
   return value.toString().trim();
+}
+
+String _toTitleCase(String value) {
+  final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.isEmpty) return '';
+
+  const lowerCaseWords = {
+    'a',
+    'an',
+    'and',
+    'as',
+    'at',
+    'by',
+    'for',
+    'from',
+    'in',
+    'of',
+    'on',
+    'or',
+    'the',
+    'to',
+    'with',
+  };
+
+  final words = normalized.split(' ');
+
+  return words.asMap().entries.map((entry) {
+    final index = entry.key;
+    final word = entry.value.toLowerCase();
+
+    if (word.isEmpty) return '';
+
+    final isFirst = index == 0;
+    final isLast = index == words.length - 1;
+    if (!isFirst && !isLast && lowerCaseWords.contains(word)) {
+      return word;
+    }
+
+    return word
+        .split('-')
+        .map((segment) {
+          if (segment.isEmpty) return '';
+          return '${segment[0].toUpperCase()}${segment.substring(1)}';
+        })
+        .join('-');
+  }).join(' ');
 }

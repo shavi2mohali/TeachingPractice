@@ -44,8 +44,8 @@ class SchoolBulkUploadService {
 
     for (final school in schools) {
       final udise = _stringValue(school['udise']);
-      final name = _stringValue(school['name']);
-      final districtId = _stringValue(school['districtId']).toUpperCase();
+      final name = _toTitleCase(_stringValue(school['name']));
+      final districtId = _toTitleCase(_stringValue(school['districtId']));
 
       if (name.isEmpty || districtId.isEmpty) {
         skippedInvalidCount++;
@@ -88,5 +88,51 @@ class SchoolBulkUploadService {
   String _stringValue(dynamic value) {
     if (value == null) return '';
     return value.toString().trim();
+  }
+
+  String _toTitleCase(String value) {
+    final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.isEmpty) return '';
+
+    const lowerCaseWords = {
+      'a',
+      'an',
+      'and',
+      'as',
+      'at',
+      'by',
+      'for',
+      'from',
+      'in',
+      'of',
+      'on',
+      'or',
+      'the',
+      'to',
+      'with',
+    };
+
+    final words = normalized.split(' ');
+
+    return words.asMap().entries.map((entry) {
+      final index = entry.key;
+      final word = entry.value.toLowerCase();
+
+      if (word.isEmpty) return '';
+
+      final isFirst = index == 0;
+      final isLast = index == words.length - 1;
+      if (!isFirst && !isLast && lowerCaseWords.contains(word)) {
+        return word;
+      }
+
+      return word
+          .split('-')
+          .map((segment) {
+            if (segment.isEmpty) return '';
+            return '${segment[0].toUpperCase()}${segment.substring(1)}';
+          })
+          .join('-');
+    }).join(' ');
   }
 }
