@@ -339,7 +339,7 @@ class _SchoolNameDropdown extends StatelessWidget {
       return const Text('Select district first');
     }
 
-    final schoolDistrictId = selectedDistrict.trim().toUpperCase();
+    final schoolDistrictId = selectedDistrict.trim();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
@@ -400,6 +400,7 @@ class _SchoolNameDropdown extends StatelessWidget {
     return data['schoolId'] as String? ?? data['udise'] as String? ?? doc.id;
   }
 }
+
 
 class _RoleEntityDropdown extends StatelessWidget {
   const _RoleEntityDropdown({

@@ -6,18 +6,10 @@ import '../../../../admin_web/features/schools/presentation/pages/school_excel_u
 import '../../../../admin_web/features/students/presentation/pages/student_excel_upload_page.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
-import 'manage_schools_placeholder_page.dart';
-import 'view_proposals_placeholder_page.dart';
+import 'student_status_overview_page.dart';
 
-class AdminDashboard extends StatefulWidget {
+class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
-
-  @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
-}
-
-class _AdminDashboardState extends State<AdminDashboard> {
-  bool _isSeedingColleges = false;
 
   @override
   Widget build(BuildContext context) {
@@ -64,14 +56,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                       ),
                       _AdminHomeCard(
-                        title: 'Manage Schools',
-                        icon: Icons.school_outlined,
-                        onTap: () => _openPage(
-                          context,
-                          const ManageSchoolsPlaceholderPage(),
-                        ),
-                      ),
-                      _AdminHomeCard(
                         title: 'Upload Schools from Excel',
                         icon: Icons.maps_home_work_outlined,
                         onTap: () => _openPage(
@@ -80,15 +64,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                       ),
                       _AdminHomeCard(
-                        title: 'View Proposals',
-                        icon: Icons.assignment_outlined,
-                        onTap: () => _openPage(
-                          context,
-                          const ViewProposalsPlaceholderPage(),
-                        ),
-                      ),
-                      _AdminHomeCard(
-                        title: 'Pending Registrations',
+                        title: 'Registrations',
                         icon: Icons.how_to_reg_outlined,
                         onTap: () => _openPage(
                           context,
@@ -96,11 +72,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                       ),
                       _AdminHomeCard(
-                        title: _isSeedingColleges
-                            ? 'Seeding Colleges...'
-                            : 'Seed Colleges Data',
-                        icon: Icons.dataset_outlined,
-                        onTap: _isSeedingColleges ? null : _seedCollegesData,
+                        title: 'Student Status Overview',
+                        icon: Icons.analytics_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const StudentStatusOverviewPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Reset All College Proposals',
+                        icon: Icons.restart_alt_outlined,
+                        onTap: () => _confirmResetAllCollegeProposals(context),
                       ),
                     ],
                   ),
@@ -113,117 +95,100 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Future<void> _seedCollegesData() async {
-    setState(() => _isSeedingColleges = true);
-
-    try {
-      final firestore = FirebaseFirestore.instance;
-      final batch = firestore.batch();
-      final colleges = firestore.collection('colleges');
-
-      for (final college in _collegeSeedData) {
-        final collegeId = college['collegeId']!;
-        batch.set(colleges.doc(collegeId), college);
-      }
-
-      await batch.commit();
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Colleges data seeded successfully')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to seed colleges data: $error')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSeedingColleges = false);
-      }
-    }
-  }
-
   void _openPage(BuildContext context, Widget page) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => page),
     );
   }
-}
 
-const List<Map<String, String>> _collegeSeedData = [
-  {
-    'collegeId': 'C001',
-    'name':
-        'Akal College of Physical Education, Gurusagar Mastuana Saahib (Sangrur)',
-    'districtId': 'Sangrur',
-    'shortName': 'Akal College Sangrur',
-  },
-  {
-    'collegeId': 'C002',
-    'name': 'Govind National College of Physical Education, Narangwal Ludhiana',
-    'districtId': 'Ludhiana',
-    'shortName': 'Govind College Ludhiana',
-  },
-  {
-    'collegeId': 'C003',
-    'name': 'Khalsa College of Physical Education, Amritsar',
-    'districtId': 'Amritsar',
-    'shortName': 'Khalsa College Amritsar',
-  },
-  {
-    'collegeId': 'C004',
-    'name': 'Malwa College of Physical Education, Bathinda',
-    'districtId': 'Bathinda',
-    'shortName': 'Malwa College Bathinda',
-  },
-  {
-    'collegeId': 'C005',
-    'name':
-        'Mata Gurdev Kaur Shahi College of Physical Education, Jhakdaudi Ludhiana',
-    'districtId': 'Ludhiana',
-    'shortName': 'Mata Gurdev College Ludhiana',
-  },
-  {
-    'collegeId': 'C006',
-    'name':
-        'Professor Gursewak Singh Government College of Physical Education, Patiala',
-    'districtId': 'Patiala',
-    'shortName': 'Govt College Patiala',
-  },
-  {
-    'collegeId': 'C007',
-    'name': 'S. Rajinder Chahal College of Physical Education, Kalyan Patiala',
-    'districtId': 'Patiala',
-    'shortName': 'Rajinder Chahal College Patiala',
-  },
-  {
-    'collegeId': 'C008',
-    'name': 'Saint Soldier College of Physical Education, Lidran Jalandhar',
-    'districtId': 'Jalandhar',
-    'shortName': 'Saint Soldier Jalandhar',
-  },
-  {
-    'collegeId': 'C009',
-    'name': 'Shaheed Kansi Ram College of Physical Education, Bhago Majra Mohali',
-    'districtId': 'SAS Nagar',
-    'shortName': 'Shaheed Kansi Ram Mohali',
-  },
-  {
-    'collegeId': 'C010',
-    'name': 'Shri Guru Gobind Singh Khalsa College, Mehadpur Hoshiarpur',
-    'districtId': 'Hoshiarpur',
-    'shortName': 'SGGS Khalsa Hoshiarpur',
-  },
-  {
-    'collegeId': 'C011',
-    'name': 'The Enlightened College of Physical Education, Jhunir Mansa',
-    'districtId': 'Mansa',
-    'shortName': 'Enlightened College Mansa',
-  },
-];
+  Future<void> _confirmResetAllCollegeProposals(BuildContext context) async {
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Reset All College Proposals'),
+          content: const Text(
+            'Are you sure you want to reset all college proposals?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldReset == true) {
+      await resetAllCollegeProposals(context);
+    }
+  }
+
+  Future<void> resetAllCollegeProposals(BuildContext context) async {
+    final firestore = FirebaseFirestore.instance;
+
+    try {
+      final studentsSnapshot = await firestore.collection('students').get();
+
+      WriteBatch batch = firestore.batch();
+      var pendingOperations = 0;
+
+      Future<void> commitBatchIfNeeded({bool force = false}) async {
+        if (pendingOperations == 0) return;
+
+        if (force || pendingOperations >= 450) {
+          await batch.commit();
+          batch = firestore.batch();
+          pendingOperations = 0;
+        }
+      }
+
+      for (final studentDoc in studentsSnapshot.docs) {
+        final data = studentDoc.data();
+        final hasProposalFields =
+            data.containsKey('proposedSchoolId') ||
+            data.containsKey('propoosaed at') ||
+            data.containsKey('collegeProposalTimestamp') ||
+            data.containsKey('proposedSchoolName') ||
+            data.containsKey('submittedOn');
+
+        if (!hasProposalFields) {
+          continue;
+        }
+
+        batch.update(studentDoc.reference, {
+          'proposedSchoolId': FieldValue.delete(),
+          'propoosaed at': FieldValue.delete(),
+          'collegeProposalTimestamp': FieldValue.delete(),
+          'proposedSchoolName': FieldValue.delete(),
+          'submittedOn': FieldValue.delete(),
+          'updatedAt': Timestamp.now(),
+        });
+        pendingOperations++;
+        await commitBatchIfNeeded();
+      }
+
+      await commitBatchIfNeeded(force: true);
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('College proposals reset successfully')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to reset college proposals: $error')),
+      );
+    }
+  }
+}
 
 class _AdminHomeCard extends StatelessWidget {
   const _AdminHomeCard({

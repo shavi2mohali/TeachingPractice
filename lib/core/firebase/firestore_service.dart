@@ -48,15 +48,37 @@ class FirestoreService {
         );
   }
 
+  Stream<List<PendingRegistration>> streamRegistrationHistory() {
+    return _users
+        .where('status', whereIn: ['approved', 'rejected'])
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(
+                (doc) => PendingRegistration.fromMap({
+                  ...doc.data(),
+                  'uid': doc.id,
+                }),
+              )
+              .toList()
+            ..sort((first, second) => second.actionedAt.compareTo(first.actionedAt)),
+        );
+  }
+
   Future<void> approveRegistration(String uid) async {
     await _users.doc(uid).update({
       'status': 'approved',
+      'actionedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
   Future<void> rejectRegistration(String uid) async {
-    await _users.doc(uid).delete();
+    await _users.doc(uid).update({
+      'status': 'rejected',
+      'actionedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<String> addStudent(StudentModel student) async {
@@ -308,6 +330,7 @@ class FirestoreService {
       transaction.update(studentRef, {
         'status': 'proposed',
         'proposedSchoolId': proposal.proposedSchoolId,
+        'submittedOn': Timestamp.fromDate(proposal.proposedAt),
         'updatedAt': Timestamp.now(),
       });
     });
@@ -559,33 +582,44 @@ class PendingRegistration {
   final String uid;
   final String registrationNumber;
   final String role;
+  final String status;
   final String districtId;
   final String officerName;
+  final String entityName;
   final String mobile;
   final String email;
   final DateTime createdAt;
+  final DateTime actionedAt;
 
   const PendingRegistration({
     required this.uid,
     required this.registrationNumber,
     required this.role,
+    required this.status,
     required this.districtId,
     required this.officerName,
+    required this.entityName,
     required this.mobile,
     required this.email,
     required this.createdAt,
+    required this.actionedAt,
   });
 
   factory PendingRegistration.fromMap(Map<String, dynamic> map) {
+    final role = map['role'] as String? ?? '';
+
     return PendingRegistration(
       uid: map['uid'] as String? ?? '',
       registrationNumber: map['registrationNumber'] as String? ?? '',
-      role: map['role'] as String? ?? '',
+      role: role,
+      status: map['status'] as String? ?? '',
       districtId: map['districtId'] as String? ?? '',
       officerName: map['officerName'] as String? ?? map['name'] as String? ?? '',
+      entityName: _entityNameFromMap(map, role),
       mobile: map['mobile'] as String? ?? map['phone'] as String? ?? '',
       email: map['email'] as String? ?? '',
       createdAt: _dateTimeFromValue(map['createdAt']),
+      actionedAt: _dateTimeFromValue(map['actionedAt'] ?? map['updatedAt']),
     );
   }
 
@@ -593,6 +627,32 @@ class PendingRegistration {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static String _entityNameFromMap(Map<String, dynamic> map, String role) {
+    switch (role.toLowerCase()) {
+      case 'college':
+        return map['collegeName'] as String? ??
+            map['collegeId'] as String? ??
+            map['officerName'] as String? ??
+            '';
+      case 'school':
+        return map['schoolName'] as String? ??
+            map['schoolId'] as String? ??
+            map['officerName'] as String? ??
+            '';
+      case 'diet':
+        return map['dietName'] as String? ??
+            map['dietId'] as String? ??
+            map['officerName'] as String? ??
+            '';
+      case 'deo':
+        return map['deoName'] as String? ??
+            map['officerName'] as String? ??
+            '';
+      default:
+        return map['officerName'] as String? ?? map['name'] as String? ?? '';
+    }
   }
 }
 

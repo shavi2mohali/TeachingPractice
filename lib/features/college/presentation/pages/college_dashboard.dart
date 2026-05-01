@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
-import 'propose_school_page.dart';
 
 class CollegeDashboard extends StatelessWidget {
   const CollegeDashboard({super.key});
@@ -40,16 +39,6 @@ class CollegeDashboard extends StatelessWidget {
                       );
                     },
                     child: const Text('View Students'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ProposeSchoolPage(),
-                        ),
-                      );
-                    },
-                    child: const Text('Propose School'),
                   ),
                 ],
               ),

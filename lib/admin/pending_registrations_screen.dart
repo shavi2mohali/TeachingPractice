@@ -64,87 +64,219 @@ class _PendingRegistrationsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pending Registrations'),
+        title: const Text('Registrations'),
         actions: const [HomeLogoutActions()],
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: StreamBuilder<List<PendingRegistration>>(
-          stream: _firestoreService.streamPendingRegistrations(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Pending Registrations',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: StreamBuilder<List<PendingRegistration>>(
+                stream: _firestoreService.streamPendingRegistrations(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-            if (snapshot.hasError) {
-              return Center(
-                child: Text('Unable to load registrations: ${snapshot.error}'),
-              );
-            }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Unable to load registrations: ${snapshot.error}'),
+                    );
+                  }
 
-            final registrations = snapshot.data ?? [];
+                  final registrations = snapshot.data ?? [];
 
-            if (registrations.isEmpty) {
-              return const Center(child: Text('No pending registrations'));
-            }
+                  if (registrations.isEmpty) {
+                    return const Center(child: Text('No pending registrations'));
+                  }
 
-            return Scrollbar(
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Registration No.')),
-                      DataColumn(label: Text('Officer Name')),
-                      DataColumn(label: Text('Mobile')),
-                      DataColumn(label: Text('Email')),
-                      DataColumn(label: Text('Role')),
-                      DataColumn(label: Text('District')),
-                      DataColumn(label: Text('Created At')),
-                      DataColumn(label: Text('Actions')),
-                    ],
-                    rows: registrations
-                        .map(
-                          (registration) => DataRow(
-                            cells: [
-                              DataCell(Text(registration.registrationNumber)),
-                              DataCell(Text(registration.officerName)),
-                              DataCell(Text(registration.mobile)),
-                              DataCell(Text(registration.email)),
-                              DataCell(Text(registration.role)),
-                              DataCell(Text(registration.districtId)),
-                              DataCell(Text(_formatDate(registration.createdAt))),
-                              DataCell(
-                                _RegistrationActions(
-                                  isProcessing: _processingUids.contains(
-                                    registration.uid,
-                                  ),
-                                  onApprove: () => _approve(registration.uid),
-                                  onReject: () => _reject(registration.uid),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
+                  return _RegistrationsTable(
+                    registrations: registrations,
+                    processingUids: _processingUids,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    showActions: true,
+                    showStatus: false,
+                    timestampLabel: 'Created At',
+                    timestampBuilder: (registration) =>
+                        _formatDateTime(registration.createdAt),
+                  );
+                },
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'History',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: StreamBuilder<List<PendingRegistration>>(
+                stream: _firestoreService.streamRegistrationHistory(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Unable to load history: ${snapshot.error}'),
+                    );
+                  }
+
+                  final registrations = snapshot.data ?? [];
+
+                  if (registrations.isEmpty) {
+                    return const Center(child: Text('No registration history'));
+                  }
+
+                  return _RegistrationsTable(
+                    registrations: registrations,
+                    processingUids: _processingUids,
+                    onApprove: _approve,
+                    onReject: _reject,
+                    showActions: false,
+                    showStatus: true,
+                    timestampLabel: 'Actioned At',
+                    timestampBuilder: (registration) =>
+                        _formatDateTime(registration.actionedAt),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDateTime(DateTime date) {
     if (date.millisecondsSinceEpoch == 0) return '-';
 
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year.toString().padLeft(4, '0');
-    return '$day-$month-$year';
+    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12)
+        .toString()
+        .padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final suffix = date.hour >= 12 ? 'PM' : 'AM';
+    return '$day-$month-$year $hour:$minute $suffix';
+  }
+}
+
+class _RegistrationsTable extends StatelessWidget {
+  const _RegistrationsTable({
+    required this.registrations,
+    required this.processingUids,
+    required this.onApprove,
+    required this.onReject,
+    required this.showActions,
+    required this.showStatus,
+    required this.timestampLabel,
+    required this.timestampBuilder,
+  });
+
+  final List<PendingRegistration> registrations;
+  final Set<String> processingUids;
+  final ValueChanged<String> onApprove;
+  final ValueChanged<String> onReject;
+  final bool showActions;
+  final bool showStatus;
+  final String timestampLabel;
+  final String Function(PendingRegistration registration) timestampBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SingleChildScrollView(
+          child: DataTable(
+            columns: [
+              const DataColumn(label: Text('Registration No.')),
+              const DataColumn(label: Text('Entity Name')),
+              const DataColumn(label: Text('Officer Name')),
+              const DataColumn(label: Text('Mobile')),
+              const DataColumn(label: Text('Email')),
+              const DataColumn(label: Text('Role')),
+              const DataColumn(label: Text('District')),
+              if (showStatus) const DataColumn(label: Text('Status')),
+              DataColumn(label: Text(timestampLabel)),
+              if (showActions) const DataColumn(label: Text('Actions')),
+            ],
+            rows: registrations.map((registration) {
+              final statusColor = registration.status.toLowerCase() == 'approved'
+                  ? Colors.green
+                  : registration.status.toLowerCase() == 'rejected'
+                      ? Colors.red
+                      : null;
+
+              TextStyle? coloredStyle([FontWeight? fontWeight]) => statusColor ==
+                      null
+                  ? null
+                  : TextStyle(color: statusColor, fontWeight: fontWeight);
+
+              return DataRow(
+                cells: [
+                  DataCell(
+                    Text(
+                      registration.registrationNumber,
+                      style: coloredStyle(),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      registration.entityName,
+                      style: coloredStyle(),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      registration.officerName,
+                      style: coloredStyle(),
+                    ),
+                  ),
+                  DataCell(Text(registration.mobile, style: coloredStyle())),
+                  DataCell(Text(registration.email, style: coloredStyle())),
+                  DataCell(Text(registration.role, style: coloredStyle())),
+                  DataCell(Text(registration.districtId, style: coloredStyle())),
+                  if (showStatus)
+                    DataCell(
+                      Text(
+                        registration.status,
+                        style: coloredStyle(FontWeight.w700),
+                      ),
+                    ),
+                  DataCell(
+                    Text(
+                      timestampBuilder(registration),
+                      style: coloredStyle(),
+                    ),
+                  ),
+                  if (showActions)
+                    DataCell(
+                      _RegistrationActions(
+                        isProcessing: processingUids.contains(registration.uid),
+                        onApprove: () => onApprove(registration.uid),
+                        onReject: () => onReject(registration.uid),
+                      ),
+                    ),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
   }
 }
 

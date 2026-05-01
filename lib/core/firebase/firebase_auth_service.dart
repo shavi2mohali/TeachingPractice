@@ -51,7 +51,10 @@ class FirebaseAuthService {
     }
 
     final normalizedRole = role.trim().toLowerCase();
-    final registrationNumber = _generateRegistrationNumber(firebaseUser.uid);
+    final registrationNumber = _generateRegistrationNumber(
+      uid: firebaseUser.uid,
+      role: normalizedRole,
+    );
     final userData = {
       'uid': firebaseUser.uid,
       'status': 'pending',
@@ -95,6 +98,14 @@ class FirebaseAuthService {
     await _ensureAdminProfileIfNeeded(firebaseUser);
 
     final appUser = await fetchCurrentUserProfile(firebaseUser.uid);
+
+    if (appUser.status == 'rejected') {
+      await _firebaseAuth.signOut();
+      throw FirebaseAuthException(
+        code: 'registration-rejected',
+        message: 'Your registration request has been rejected.',
+      );
+    }
 
     if (appUser.status != 'approved') {
       await _firebaseAuth.signOut();
@@ -166,8 +177,20 @@ class FirebaseAuthService {
     }
   }
 
-  String _generateRegistrationNumber(String uid) {
-    final suffix = uid.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
-    return 'TP2025-$suffix';
+  String _generateRegistrationNumber({
+    required String uid,
+    required String role,
+  }) {
+    final roleCode = switch (role.trim().toLowerCase()) {
+      'college' => 'COL',
+      'school' => 'SCH',
+      'deo' => 'DEO',
+      'diet' => 'DIET',
+      _ => 'GEN',
+    };
+    final digits = uid.replaceAll(RegExp(r'[^0-9]'), '');
+    final numericValue = digits.isEmpty ? uid.hashCode.abs() : int.parse(digits);
+    final suffix = (numericValue % 10000).toString().padLeft(4, '0');
+    return 'TP25$roleCode$suffix';
   }
 }
