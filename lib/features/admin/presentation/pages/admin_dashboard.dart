@@ -80,9 +80,10 @@ class AdminDashboard extends StatelessWidget {
                         ),
                       ),
                       _AdminHomeCard(
-                        title: 'Reset All College Proposals',
+                        title: 'Reset All Proposals and Allocation',
                         icon: Icons.restart_alt_outlined,
-                        onTap: () => _confirmResetAllCollegeProposals(context),
+                        onTap: () =>
+                            _confirmResetAllProposalsAndAllocation(context),
                       ),
                     ],
                   ),
@@ -101,14 +102,21 @@ class AdminDashboard extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmResetAllCollegeProposals(BuildContext context) async {
+  Future<void> _confirmResetAllProposalsAndAllocation(
+    BuildContext context,
+  ) async {
     final shouldReset = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Reset All College Proposals'),
+          title: const Text('Reset All Proposals and Allocation'),
           content: const Text(
-            'Are you sure you want to reset all college proposals?',
+            'This action will delete ALL proposals, allocations, and reset '
+            'student progress. This cannot be undone.',
+            style: TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           actions: [
             TextButton(
@@ -125,14 +133,26 @@ class AdminDashboard extends StatelessWidget {
     );
 
     if (shouldReset == true) {
-      await resetAllCollegeProposals(context);
+      await resetAllProposalsAndAllocation(context);
     }
   }
 
-  Future<void> resetAllCollegeProposals(BuildContext context) async {
+  Future<void> resetAllProposalsAndAllocation(BuildContext context) async {
     final firestore = FirebaseFirestore.instance;
+    const progressedStatuses = <String>{
+      'pending',
+      'proposed',
+      'deoApproved',
+      'deoRejected',
+      'assigned_by_diet',
+      'allocated',
+      'allotted',
+      'final_allotted',
+    };
 
     try {
+      final proposalsSnapshot = await firestore.collection('proposals').get();
+      final allocationsSnapshot = await firestore.collection('allocations').get();
       final studentsSnapshot = await firestore.collection('students').get();
 
       WriteBatch batch = firestore.batch();
@@ -148,25 +168,68 @@ class AdminDashboard extends StatelessWidget {
         }
       }
 
+      for (final proposalDoc in proposalsSnapshot.docs) {
+        batch.delete(proposalDoc.reference);
+        pendingOperations++;
+        await commitBatchIfNeeded();
+      }
+
+      for (final allocationDoc in allocationsSnapshot.docs) {
+        batch.delete(allocationDoc.reference);
+        pendingOperations++;
+        await commitBatchIfNeeded();
+      }
+
       for (final studentDoc in studentsSnapshot.docs) {
         final data = studentDoc.data();
-        final hasProposalFields =
+        final status = data['status'] as String? ?? '';
+        final shouldResetStudent =
             data.containsKey('proposedSchoolId') ||
             data.containsKey('propoosaed at') ||
+            data.containsKey('submittedAt') ||
             data.containsKey('collegeProposalTimestamp') ||
             data.containsKey('proposedSchoolName') ||
-            data.containsKey('submittedOn');
+            data.containsKey('submittedOn') ||
+            data.containsKey('finalSchoolId') ||
+            data.containsKey('allottedSchoolName') ||
+            data.containsKey('deoStatus') ||
+            data.containsKey('deoRemarks') ||
+            data.containsKey('deoReviewedAt') ||
+            data.containsKey('dietStatus') ||
+            data.containsKey('dietRemarks') ||
+            data.containsKey('dietReviewedAt') ||
+            data.containsKey('reviewedAt') ||
+            data.containsKey('reviewedBy') ||
+            data.containsKey('finalAssignedAt') ||
+            data.containsKey('finalAssignedBy') ||
+            data.containsKey('allocationId') ||
+            progressedStatuses.contains(status);
 
-        if (!hasProposalFields) {
+        if (!shouldResetStudent) {
           continue;
         }
 
         batch.update(studentDoc.reference, {
           'proposedSchoolId': FieldValue.delete(),
-          'propoosaed at': FieldValue.delete(),
-          'collegeProposalTimestamp': FieldValue.delete(),
           'proposedSchoolName': FieldValue.delete(),
+          'propoosaed at': FieldValue.delete(),
+          'submittedAt': FieldValue.delete(),
           'submittedOn': FieldValue.delete(),
+          'collegeProposalTimestamp': FieldValue.delete(),
+          'finalSchoolId': FieldValue.delete(),
+          'allottedSchoolName': FieldValue.delete(),
+          'deoStatus': FieldValue.delete(),
+          'deoRemarks': FieldValue.delete(),
+          'deoReviewedAt': FieldValue.delete(),
+          'dietStatus': FieldValue.delete(),
+          'dietRemarks': FieldValue.delete(),
+          'dietReviewedAt': FieldValue.delete(),
+          'reviewedAt': FieldValue.delete(),
+          'reviewedBy': FieldValue.delete(),
+          'finalAssignedAt': FieldValue.delete(),
+          'finalAssignedBy': FieldValue.delete(),
+          'allocationId': FieldValue.delete(),
+          'status': 'created',
           'updatedAt': Timestamp.now(),
         });
         pendingOperations++;
@@ -178,13 +241,19 @@ class AdminDashboard extends StatelessWidget {
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('College proposals reset successfully')),
+        const SnackBar(
+          content: Text('All proposals, allocations, and student progress reset successfully'),
+        ),
       );
     } catch (error) {
       if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to reset college proposals: $error')),
+        SnackBar(
+          content: Text(
+            'Unable to reset proposals and allocations: $error',
+          ),
+        ),
       );
     }
   }

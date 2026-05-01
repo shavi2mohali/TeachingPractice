@@ -1,10 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/routes/role_navigation.dart';
 import '../../../../core/constants/registration_constants.dart';
 import 'approval_pending_page.dart';
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart' as app_auth;
 import '../widgets/home_logout_actions.dart';
 
 class LoginPage extends StatefulWidget {
@@ -29,7 +30,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = context.read<AuthProvider>();
+    final authProvider = context.read<app_auth.AuthProvider>();
 
     try {
       final user = await authProvider.login(
@@ -65,9 +66,86 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _emailController.text);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Forgot Password'),
+          content: TextField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+
+                if (email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter your email address.')),
+                  );
+                  return;
+                }
+
+                try {
+                  await FirebaseAuth.instance.sendPasswordResetEmail(
+                    email: email,
+                  );
+
+                  if (!mounted) return;
+
+                  Navigator.of(dialogContext).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'A password reset link has been sent to your email address.',
+                      ),
+                    ),
+                  );
+                } on FirebaseAuthException catch (error) {
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        error.message ?? 'Unable to send reset link.',
+                      ),
+                    ),
+                  );
+                } catch (_) {
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Unable to send reset link.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Send Reset Link'),
+            ),
+          ],
+        );
+      },
+    );
+
+    emailController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLoading = context.watch<AuthProvider>().isLoading;
+    final isLoading = context.watch<app_auth.AuthProvider>().isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -120,6 +198,11 @@ class _LoginPageState extends State<LoginPage> {
                             )
                           : const Text('Login'),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _showForgotPasswordDialog,
+                    child: const Text('Forgot Password?'),
                   ),
                 ],
               ),

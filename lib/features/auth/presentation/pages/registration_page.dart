@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../core/constants/registration_constants.dart';
@@ -185,7 +186,12 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _mobileController,
-                    keyboardType: TextInputType.phone,
+                    keyboardType: TextInputType.number,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(10),
+                    ],
                     decoration: const InputDecoration(
                       labelText: 'Mobile Number',
                       border: OutlineInputBorder(),
