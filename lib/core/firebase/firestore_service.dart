@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:typed_data';
 
 import '../../features/admin/data/models/school_model.dart';
 import '../../features/admin/data/models/student_model.dart';
@@ -20,6 +21,12 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _schools =>
       _firestore.collection('schools');
 
+  CollectionReference<Map<String, dynamic>> get _colleges =>
+      _firestore.collection('colleges');
+
+  CollectionReference<Map<String, dynamic>> get _diets =>
+      _firestore.collection('diets');
+
   CollectionReference<Map<String, dynamic>> get _proposals =>
       _firestore.collection('proposals');
 
@@ -35,34 +42,29 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
 
+  CollectionReference<Map<String, dynamic>> get _correctionRequests =>
+      _firestore.collection('correction_requests');
+
   Stream<List<PendingRegistration>> streamPendingRegistrations() {
-    return _users.where('status', isEqualTo: 'pending').snapshots().map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => PendingRegistration.fromMap({
-                  ...doc.data(),
-                  'uid': doc.id,
-                }),
-              )
-              .toList(),
-        );
+    return _users
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .asyncMap(_mapRegistrationsWithEntityNames);
   }
 
   Stream<List<PendingRegistration>> streamRegistrationHistory() {
     return _users
         .where('status', whereIn: ['approved', 'rejected'])
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => PendingRegistration.fromMap({
-                  ...doc.data(),
-                  'uid': doc.id,
-                }),
-              )
-              .toList()
-            ..sort((first, second) => second.actionedAt.compareTo(first.actionedAt)),
-        );
+        .asyncMap(_mapRegistrationsWithEntityNames);
+  }
+
+  Future<List<PendingRegistration>> getRegistrationHistory() async {
+    final snapshot = await _users
+        .where('status', whereIn: ['approved', 'rejected'])
+        .get();
+
+    return _mapRegistrationsWithEntityNames(snapshot);
   }
 
   Future<void> approveRegistration(String uid) async {
@@ -338,6 +340,137 @@ class FirestoreService {
     return proposalRef.id;
   }
 
+  Future<String> createCorrectionRequest({
+    required String studentId,
+    required String registrationId,
+    required String collegeId,
+    required String districtId,
+    required String requestedBy,
+    required String studentName,
+    required String fatherName,
+    required String motherName,
+    required String nameCorrectionEnglish,
+    required String namePunjabi,
+    required String fatherNameCorrectionEnglish,
+    required String fatherNamePunjabi,
+    required String motherNameCorrectionEnglish,
+    required String motherNamePunjabi,
+    required Uint8List certificateBytes,
+    required String certificateFileName,
+    required String certificateMimeType,
+  }) async {
+    final requestRef = _correctionRequests.doc();
+    final studentRef = _students.doc(studentId);
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((transaction) async {
+      transaction.set(requestRef, {
+        'requestId': requestRef.id,
+        'studentId': studentId,
+        'registrationId': registrationId,
+        'collegeId': collegeId,
+        'districtId': districtId,
+        'requestedBy': requestedBy,
+        'studentName': studentName,
+        'fatherName': fatherName,
+        'motherName': motherName,
+        'nameCorrectionEnglish': nameCorrectionEnglish,
+        'namePunjabi': namePunjabi,
+        'fatherNameCorrectionEnglish': fatherNameCorrectionEnglish,
+        'fatherNamePunjabi': fatherNamePunjabi,
+        'motherNameCorrectionEnglish': motherNameCorrectionEnglish,
+        'motherNamePunjabi': motherNamePunjabi,
+        'certificateFileName': certificateFileName,
+        'certificateMimeType': certificateMimeType,
+        'certificatePdf': Blob(certificateBytes),
+        'status': 'pending',
+        'createdAt': now,
+        'updatedAt': now,
+      });
+
+      transaction.update(studentRef, {
+        'correctionRequestStatus': 'pending',
+        'correctionRequestedAt': now,
+        'updatedAt': now,
+      });
+    });
+
+    return requestRef.id;
+  }
+
+  Future<void> approveCorrectionRequest({
+    required String requestId,
+    required String studentId,
+    required String reviewedBy,
+    required String nameCorrectionEnglish,
+    required String namePunjabi,
+    required String fatherNameCorrectionEnglish,
+    required String fatherNamePunjabi,
+    required String motherNameCorrectionEnglish,
+    required String motherNamePunjabi,
+  }) async {
+    final requestRef = _correctionRequests.doc(requestId);
+    final studentRef = _students.doc(studentId);
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((transaction) async {
+      transaction.update(requestRef, {
+        'status': 'approved',
+        'reviewedBy': reviewedBy,
+        'reviewedAt': now,
+        'updatedAt': now,
+      });
+
+      transaction.update(studentRef, {
+        if (nameCorrectionEnglish.trim().isNotEmpty) ...{
+          'name': nameCorrectionEnglish.trim(),
+          'nameCorrectionEnglish': nameCorrectionEnglish.trim(),
+        },
+        if (namePunjabi.trim().isNotEmpty) 'namePunjabi': namePunjabi.trim(),
+        if (fatherNameCorrectionEnglish.trim().isNotEmpty) ...{
+          'fatherName': fatherNameCorrectionEnglish.trim(),
+          'fatherNameCorrectionEnglish': fatherNameCorrectionEnglish.trim(),
+        },
+        if (fatherNamePunjabi.trim().isNotEmpty)
+          'fatherNamePunjabi': fatherNamePunjabi.trim(),
+        if (motherNameCorrectionEnglish.trim().isNotEmpty) ...{
+          'motherName': motherNameCorrectionEnglish.trim(),
+          'motherNameCorrectionEnglish': motherNameCorrectionEnglish.trim(),
+        },
+        if (motherNamePunjabi.trim().isNotEmpty)
+          'motherNamePunjabi': motherNamePunjabi.trim(),
+        'correctionRequestStatus': 'approved',
+        'correctionApprovedAt': now,
+        'updatedAt': now,
+      });
+    });
+  }
+
+  Future<void> rejectCorrectionRequest({
+    required String requestId,
+    required String studentId,
+    required String reviewedBy,
+  }) async {
+    final requestRef = _correctionRequests.doc(requestId);
+    final studentRef = _students.doc(studentId);
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((transaction) async {
+      transaction.update(requestRef, {
+        'status': 'rejected',
+        'reviewedBy': reviewedBy,
+        'reviewedAt': now,
+        'updatedAt': now,
+      });
+
+      transaction.update(studentRef, {
+        'correctionRequestStatus': 'rejected',
+        'correctionRejectedAt': now,
+        'updatedAt': now,
+      });
+    });
+  }
+
   Future<void> approveProposal({
     required String proposalId,
     required String studentId,
@@ -571,6 +704,66 @@ class FirestoreService {
     return '${studentId}_$year$month$day';
   }
 
+  Future<List<PendingRegistration>> _mapRegistrationsWithEntityNames(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+  ) async {
+    final registrations = await Future.wait(
+      snapshot.docs.map((doc) async {
+        final data = <String, dynamic>{
+          ...doc.data(),
+          'uid': doc.id,
+        };
+
+        data['entityName'] = await _resolveEntityName(data);
+        return PendingRegistration.fromMap(data);
+      }),
+    );
+
+    registrations.sort(
+      (first, second) => second.actionedAt.compareTo(first.actionedAt),
+    );
+
+    return registrations;
+  }
+
+  Future<String> _resolveEntityName(Map<String, dynamic> data) async {
+    final role = (data['role'] as String? ?? '').trim().toLowerCase();
+
+    switch (role) {
+      case 'college':
+        final collegeId = (data['collegeId'] as String? ?? '').trim();
+        if (collegeId.isEmpty) return '';
+
+        final collegeSnapshot = await _colleges.doc(collegeId).get();
+        final collegeData = collegeSnapshot.data();
+        return collegeData?['name'] as String? ??
+            collegeData?['shortName'] as String? ??
+            collegeId;
+      case 'school':
+        final schoolId = (data['schoolId'] as String? ?? '').trim();
+        if (schoolId.isEmpty) return '';
+
+        final schoolSnapshot = await _schools.doc(schoolId).get();
+        final schoolData = schoolSnapshot.data();
+        return schoolData?['name'] as String? ?? schoolId;
+      case 'diet':
+        final dietId = (data['dietId'] as String? ?? '').trim();
+        if (dietId.isEmpty) return '';
+
+        final dietSnapshot = await _diets.doc(dietId).get();
+        final dietData = dietSnapshot.data();
+        return dietData?['name'] as String? ??
+            dietData?['shortName'] as String? ??
+            dietId;
+      case 'deo':
+        return data['deoName'] as String? ??
+            data['officerName'] as String? ??
+            '';
+      default:
+        return '';
+    }
+  }
+
   DateTime _dateTimeFromValue(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -630,6 +823,11 @@ class PendingRegistration {
   }
 
   static String _entityNameFromMap(Map<String, dynamic> map, String role) {
+    final entityName = map['entityName'] as String?;
+    if (entityName != null && entityName.trim().isNotEmpty) {
+      return entityName.trim();
+    }
+
     switch (role.toLowerCase()) {
       case 'college':
         return map['collegeName'] as String? ??

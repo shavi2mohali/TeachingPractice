@@ -6,6 +6,7 @@ import '../../../../admin_web/features/schools/presentation/pages/school_excel_u
 import '../../../../admin_web/features/students/presentation/pages/student_excel_upload_page.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
+import 'correction_requests_page.dart';
 import 'student_status_overview_page.dart';
 
 class AdminDashboard extends StatelessWidget {
@@ -77,6 +78,14 @@ class AdminDashboard extends StatelessWidget {
                         onTap: () => _openPage(
                           context,
                           const StudentStatusOverviewPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Correction Requests',
+                        icon: Icons.fact_check_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const CorrectionRequestsPage(),
                         ),
                       ),
                       _AdminHomeCard(

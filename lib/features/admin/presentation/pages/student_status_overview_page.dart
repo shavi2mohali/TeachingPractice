@@ -329,12 +329,14 @@ class _TimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = entry.color;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.more_time, size: 18),
+          Icon(Icons.more_time, size: 18, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -342,15 +344,23 @@ class _TimelineTile extends StatelessWidget {
               children: [
                 Text(
                   entry.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
                 ),
                 const SizedBox(height: 2),
-                Text(entry.description),
+                Text(
+                  entry.description,
+                  style: TextStyle(color: color),
+                ),
                 if (entry.dateTimeText != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     entry.dateTimeText!,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: color,
+                        ),
                   ),
                 ],
               ],
@@ -366,15 +376,28 @@ class _StudentTimelineBundle {
   const _StudentTimelineBundle({
     this.proposal,
     this.allocation,
+    this.student,
+    this.collegeName,
+    this.proposedSchoolName,
+    this.finalSchoolName,
+    this.deoName,
+    this.dietName,
   });
 
   final Map<String, dynamic>? proposal;
   final Map<String, dynamic>? allocation;
+  final Map<String, dynamic>? student;
+  final String? collegeName;
+  final String? proposedSchoolName;
+  final String? finalSchoolName;
+  final String? deoName;
+  final String? dietName;
 
   static Future<_StudentTimelineBundle> load({
     required String studentId,
   }) async {
     final firestore = FirebaseFirestore.instance;
+    final studentSnapshot = await firestore.collection('students').doc(studentId).get();
     final proposalSnapshot = await firestore
         .collection('proposals')
         .where('studentId', isEqualTo: studentId)
@@ -386,49 +409,128 @@ class _StudentTimelineBundle {
         .limit(1)
         .get();
 
+    final studentData = studentSnapshot.data();
+    final proposalData = proposalSnapshot.docs.isEmpty
+        ? null
+        : proposalSnapshot.docs.first.data();
+    final allocationData = allocationSnapshot.docs.isEmpty
+        ? null
+        : allocationSnapshot.docs.first.data();
+
+    final collegeId = (proposalData?['collegeId'] as String?) ??
+        (studentData?['collegeId'] as String?) ??
+        '';
+    final proposedSchoolId = proposalData?['proposedSchoolId'] as String? ?? '';
+    final finalSchoolId = (studentData?['finalSchoolId'] as String?) ??
+        (allocationData?['schoolId'] as String?) ??
+        '';
+    final deoUserId = proposalData?['reviewedBy'] as String? ?? '';
+    final dietUserId = proposalData?['finalAssignedBy'] as String? ?? '';
+
+    final lookups = await Future.wait<DocumentSnapshot<Map<String, dynamic>>?>([
+      collegeId.isEmpty
+          ? Future.value(null)
+          : firestore.collection('colleges').doc(collegeId).get(),
+      proposedSchoolId.isEmpty
+          ? Future.value(null)
+          : firestore.collection('schools').doc(proposedSchoolId).get(),
+      finalSchoolId.isEmpty
+          ? Future.value(null)
+          : firestore.collection('schools').doc(finalSchoolId).get(),
+      deoUserId.isEmpty
+          ? Future.value(null)
+          : firestore.collection('users').doc(deoUserId).get(),
+      dietUserId.isEmpty
+          ? Future.value(null)
+          : firestore.collection('users').doc(dietUserId).get(),
+    ]);
+
+    final collegeData = lookups[0]?.data();
+    final proposedSchoolData = lookups[1]?.data();
+    final finalSchoolData = lookups[2]?.data();
+    final deoUserData = lookups[3]?.data();
+    final dietUserData = lookups[4]?.data();
+
     return _StudentTimelineBundle(
-      proposal: proposalSnapshot.docs.isEmpty
-          ? null
-          : proposalSnapshot.docs.first.data(),
-      allocation: allocationSnapshot.docs.isEmpty
-          ? null
-          : allocationSnapshot.docs.first.data(),
+      proposal: proposalData,
+      allocation: allocationData,
+      student: studentData,
+      collegeName: collegeData?['name'] as String? ??
+          collegeData?['shortName'] as String? ??
+          collegeId,
+      proposedSchoolName: proposedSchoolData?['name'] as String? ??
+          proposedSchoolId,
+      finalSchoolName: finalSchoolData?['name'] as String? ?? finalSchoolId,
+      deoName: deoUserData?['name'] as String? ??
+          deoUserData?['officerName'] as String? ??
+          deoUserData?['email'] as String? ??
+          deoUserId,
+      dietName: dietUserData?['name'] as String? ??
+          dietUserData?['officerName'] as String? ??
+          dietUserData?['email'] as String? ??
+          dietUserId,
     );
   }
 
   List<_TimelineEntry> get timelineEntries {
+    final currentStudentName = student?['name'] as String? ?? 'Student';
+    final districtName = proposal?['districtId'] as String? ??
+        student?['districtId'] as String? ??
+        '';
+    final proposalStatus = (proposal?['status'] as String? ?? '').trim();
+    final hasDeoAction = proposal?['reviewedAt'] != null;
+    final deoApproved = hasDeoAction && proposalStatus != 'rejected';
+    final hasDietAction = proposal?['finalAssignedAt'] != null || allocation != null;
+    final dietRejected = (student?['dietStatus'] as String? ?? '').trim().toLowerCase() ==
+        'rejected';
+
     return [
       _TimelineEntry(
         label: 'College Proposed',
         description: proposal == null
             ? 'No proposal submitted yet'
-            : 'College submitted school proposal',
+            : '${collegeName ?? 'College'} proposed ${proposedSchoolName ?? 'school'}',
         dateTimeText: _formatDateTime(proposal?['proposedAt']),
+        color: proposal == null ? Colors.grey : Colors.green,
       ),
       _TimelineEntry(
         label: 'DEO Action',
         description: proposal == null
             ? 'Awaiting proposal'
-            : proposal?['status'] == 'rejected'
-                ? 'DEO rejected proposal'
-                : proposal?['reviewedAt'] != null
-                    ? 'DEO reviewed proposal'
-                    : 'Awaiting DEO review',
+            : !hasDeoAction
+                ? 'Awaiting DEO review'
+                : '${deoName ?? 'DEO'} of $districtName '
+                    '${deoApproved ? 'Approved' : 'Rejected'} '
+                    '${proposedSchoolName ?? 'school'}',
         dateTimeText: _formatDateTime(proposal?['reviewedAt']),
+        color: proposal == null || !hasDeoAction
+            ? Colors.grey
+            : deoApproved
+                ? Colors.green
+                : Colors.red,
       ),
       _TimelineEntry(
-        label: 'DIET Final Allocation',
-        description: allocation == null
-            ? 'Awaiting DIET allocation'
-            : 'DIET finalized school allocation',
+        label: 'DIET Action',
+        description: !hasDietAction && !dietRejected
+            ? 'Awaiting DIET action'
+            : '${dietName ?? 'DIET'} of $districtName '
+                '${dietRejected ? 'Rejected' : 'Allotted'} '
+                '${finalSchoolName ?? proposedSchoolName ?? 'school'}',
         dateTimeText: _formatDateTime(proposal?['finalAssignedAt']),
+        color: !hasDietAction && !dietRejected
+            ? Colors.grey
+            : dietRejected
+                ? Colors.red
+                : Colors.green,
       ),
       _TimelineEntry(
         label: 'Allotted to School',
         description: allocation == null
             ? 'Not yet allotted to school'
-            : 'Student allotted to school',
+            : 'Student $currentStudentName was finally allotted '
+                '${finalSchoolName ?? proposedSchoolName ?? 'school'}',
         dateTimeText: _formatDateTime(allocation?['assignedAt']),
+        color: allocation == null ? Colors.grey : Colors.green,
       ),
     ];
   }
@@ -456,9 +558,11 @@ class _TimelineEntry {
     required this.label,
     required this.description,
     this.dateTimeText,
+    required this.color,
   });
 
   final String label;
   final String description;
   final String? dateTimeText;
+  final Color color;
 }

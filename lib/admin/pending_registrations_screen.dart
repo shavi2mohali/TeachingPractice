@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/firebase/firestore_service.dart';
+import '../features/admin/data/services/registration_history_report_service.dart';
 import '../features/auth/presentation/widgets/home_logout_actions.dart';
 
 class PendingRegistrationsScreen extends StatefulWidget {
@@ -14,7 +15,10 @@ class PendingRegistrationsScreen extends StatefulWidget {
 class _PendingRegistrationsScreenState
     extends State<PendingRegistrationsScreen> {
   final FirestoreService _firestoreService = FirestoreService();
+  final RegistrationHistoryReportService _historyReportService =
+      RegistrationHistoryReportService();
   final Set<String> _processingUids = {};
+  bool _isDownloadingHistory = false;
 
   Future<void> _approve(String uid) async {
     await _runAction(
@@ -56,6 +60,28 @@ class _PendingRegistrationsScreenState
     } finally {
       if (mounted) {
         setState(() => _processingUids.remove(uid));
+      }
+    }
+  }
+
+  Future<void> _downloadHistoryAsExcel() async {
+    setState(() => _isDownloadingHistory = true);
+
+    try {
+      await _historyReportService.downloadHistoryReport();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('History report downloaded successfully')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to download history report: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloadingHistory = false);
       }
     }
   }
@@ -112,9 +138,27 @@ class _PendingRegistrationsScreenState
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              'History',
-              style: Theme.of(context).textTheme.titleLarge,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'History',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed:
+                      _isDownloadingHistory ? null : _downloadHistoryAsExcel,
+                  icon: _isDownloadingHistory
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download_outlined),
+                  label: const Text('Download History as Excel'),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Expanded(

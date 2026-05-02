@@ -274,7 +274,7 @@ class _CollegeStudentsTable extends StatelessWidget {
           ? null
           : FirebaseFirestore.instance
               .collection('schools')
-              .where('districtId', isEqualTo: districtId)
+              .where('districtId', isEqualTo: districtId.trim())
               .snapshots(),
       builder: (context, schoolSnapshot) {
         final schoolNames = <String, String>{

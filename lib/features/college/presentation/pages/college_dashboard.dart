@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
+import 'college_corrections_page.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
 
 class CollegeDashboard extends StatelessWidget {
@@ -39,6 +40,16 @@ class CollegeDashboard extends StatelessWidget {
                       );
                     },
                     child: const Text('View Students'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const CollegeCorrectionsPage(),
+                        ),
+                      );
+                    },
+                    child: const Text('Submit Corrections'),
                   ),
                 ],
               ),

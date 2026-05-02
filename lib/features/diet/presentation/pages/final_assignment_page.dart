@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,12 +26,20 @@ class _FinalAssignmentPageState extends State<FinalAssignmentPage> {
     final results = await Future.wait<Object?>([
       _firestoreService.getStudentById(proposal.studentId),
       _firestoreService.getSchoolById(proposal.proposedSchoolId),
+      FirebaseFirestore.instance.collection('colleges').doc(proposal.collegeId).get(),
     ]);
+
+    final collegeSnapshot =
+        results[2] as DocumentSnapshot<Map<String, dynamic>>;
+    final collegeData = collegeSnapshot.data();
 
     return _DietProposalDetails(
       proposal: proposal,
       student: results[0] as StudentModel?,
       proposedSchool: results[1] as SchoolModel?,
+      collegeName: collegeData?['name'] as String? ??
+          collegeData?['shortName'] as String? ??
+          proposal.collegeId,
     );
   }
 
@@ -244,6 +253,7 @@ class _AssignmentCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text('Registration: ${student?.registrationNumber ?? '-'}'),
+            Text('Proposed By College: ${details.collegeName}'),
             Text('Proposed school: ${proposedSchool?.name ?? '-'}'),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
@@ -289,10 +299,12 @@ class _DietProposalDetails {
   final ProposalModel proposal;
   final StudentModel? student;
   final SchoolModel? proposedSchool;
+  final String collegeName;
 
   const _DietProposalDetails({
     required this.proposal,
     required this.student,
     required this.proposedSchool,
+    required this.collegeName,
   });
 }
