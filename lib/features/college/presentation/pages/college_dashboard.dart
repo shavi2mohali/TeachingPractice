@@ -42,15 +42,25 @@ class CollegeDashboard extends StatelessWidget {
                     child: const Text('View Students'),
                   ),
                   ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const CollegeCorrectionsPage(),
+                        onPressed: null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey.shade300,
+                          foregroundColor: Colors.grey.shade700,
                         ),
-                      );
-                    },
-                    child: const Text('Submit Corrections'),
-                  ),
+                        child: const Text('Submit Corrections'),
+                      ),
+                  // ElevatedButton(
+                  //   onPressed: () 
+                    
+                  //   {
+                  //     Navigator.of(context).push(
+                  //       MaterialPageRoute<void>(
+                  //         builder: (_) => const CollegeCorrectionsPage(),
+                  //       ),
+                  //     );
+                  //   },
+                  //   child: const Text('Submit Corrections'),
+                  // ),
                 ],
               ),
             ),

@@ -15,6 +15,7 @@ class CollegeCorrectionsPage extends StatelessWidget {
 
   static const List<_CorrectionListColumn> _columns = [
     _CorrectionListColumn('Registration Number', ['registrationId', 'studentId']),
+    _CorrectionListColumn('Submitted On', ['correctionRequestedAt']),
     _CorrectionListColumn('Name', ['name']),
     _CorrectionListColumn('Father Name', ['fatherName']),
     _CorrectionListColumn('Mother Name', ['motherName']),
@@ -97,24 +98,75 @@ class CollegeCorrectionsPage extends StatelessWidget {
                                         column.keys,
                                       );
 
-                                      if (column.label ==
+                                    if (column.label ==
                                           'Registration Number') {
+                                        final correctionStatus =
+                                            (data['correctionRequestStatus']
+                                                    as String? ??
+                                                '')
+                                                .trim()
+                                                .toLowerCase();
+                                        final isSubmitted =
+                                            correctionStatus.isNotEmpty;
+
                                         return DataCell(
-                                          TextButton(
-                                            onPressed: () {
-                                              Navigator.of(context).push(
-                                                MaterialPageRoute<void>(
-                                                  builder: (_) =>
-                                                      CollegeCorrectionDetailPage(
-                                                    student: student,
-                                                    user: user,
+                                          isSubmitted
+                                              ? Text(
+                                                  _formatValue(value),
+                                                  style: const TextStyle(
+                                                    color: Colors.grey,
                                                   ),
+                                                )
+                                              : TextButton(
+                                                  onPressed: () {
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute<void>(
+                                                        builder: (_) =>
+                                                            CollegeCorrectionDetailPage(
+                                                          student: student,
+                                                          user: user,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: Text(_formatValue(value)),
                                                 ),
-                                              );
-                                            },
-                                            child: Text(_formatValue(value)),
-                                          ),
                                         );
+                                      }
+
+                                      if (column.label == 'Submitted On') {
+                                        final correctionStatus =
+                                            (data['correctionRequestStatus']
+                                                    as String? ??
+                                                '')
+                                                .trim()
+                                                .toLowerCase();
+
+                                        if (correctionStatus == 'approved') {
+                                          return const DataCell(
+                                            Text(
+                                              'Approved',
+                                              style: TextStyle(
+                                                color: Colors.green,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          );
+                                        }
+
+                                        if (correctionStatus == 'rejected') {
+                                          return const DataCell(
+                                            Text(
+                                              'Rejected',
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          );
+                                        }
+
+                                        return DataCell(Text(_formatValue(value)));
                                       }
 
                                       return DataCell(
@@ -149,7 +201,7 @@ class CollegeCorrectionsPage extends StatelessWidget {
 
   static String _formatValue(dynamic value) {
     if (value == null) return '';
-    if (value is Timestamp) return _formatDateOnly(value.toDate());
+    if (value is Timestamp) return _formatDateTime(value.toDate());
     return value.toString();
   }
 
@@ -158,6 +210,18 @@ class CollegeCorrectionsPage extends StatelessWidget {
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year.toString();
     return '$day/$month/$year';
+  }
+
+  static String _formatDateTime(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12)
+        .toString()
+        .padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    final suffix = date.hour >= 12 ? 'PM' : 'AM';
+    return '$day/$month/$year $hour:$minute $suffix';
   }
 }
 

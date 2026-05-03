@@ -347,8 +347,19 @@ class _ProposalCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                              // OutlinedButton(
+                              //   onPressed: null,                          // ← Changed to null (greys out)
+                              //   style: OutlinedButton.styleFrom(
+                              //     foregroundColor: Colors.grey.shade600,
+                              //   ),
+                              //   child: const Text('Reject'),
+                              // ),
                 OutlinedButton(
-                  onPressed: isProcessing ? null : onReject,
+                  onPressed: null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey,
+                    side: const BorderSide(color: Colors.grey),
+                  ),
                   child: const Text('Reject'),
                 ),
                 const SizedBox(width: 8),

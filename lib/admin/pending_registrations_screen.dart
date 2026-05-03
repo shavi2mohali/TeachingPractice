@@ -239,87 +239,115 @@ class _RegistrationsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scrollbar(
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: DataTable(
-            columns: [
-              const DataColumn(label: Text('Registration No.')),
-              const DataColumn(label: Text('Entity Name')),
-              const DataColumn(label: Text('Officer Name')),
-              const DataColumn(label: Text('Mobile')),
-              const DataColumn(label: Text('Email')),
-              const DataColumn(label: Text('Role')),
-              const DataColumn(label: Text('District')),
-              if (showStatus) const DataColumn(label: Text('Status')),
-              DataColumn(label: Text(timestampLabel)),
-              if (showActions) const DataColumn(label: Text('Actions')),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalController = ScrollController();
+        final verticalController = ScrollController();
+
+        final rows = registrations.map((registration) {
+          final statusColor = registration.status.toLowerCase() == 'approved'
+              ? Colors.green
+              : registration.status.toLowerCase() == 'rejected'
+                  ? Colors.red
+                  : null;
+
+          TextStyle? coloredStyle([FontWeight? fontWeight]) => statusColor ==
+                  null
+              ? null
+              : TextStyle(
+                  color: statusColor,
+                  fontWeight: fontWeight,
+                );
+
+          return DataRow(
+            cells: [
+              DataCell(
+                Text(
+                  registration.registrationNumber,
+                  style: coloredStyle(),
+                ),
+              ),
+              DataCell(
+                Text(
+                  registration.entityName,
+                  style: coloredStyle(),
+                ),
+              ),
+              DataCell(
+                Text(
+                  registration.officerName,
+                  style: coloredStyle(),
+                ),
+              ),
+              DataCell(Text(registration.mobile, style: coloredStyle())),
+              DataCell(Text(registration.email, style: coloredStyle())),
+              DataCell(Text(registration.role, style: coloredStyle())),
+              DataCell(Text(registration.districtId, style: coloredStyle())),
+              if (showStatus)
+                DataCell(
+                  Text(
+                    registration.status,
+                    style: coloredStyle(FontWeight.w700),
+                  ),
+                ),
+              DataCell(
+                Text(
+                  timestampBuilder(registration),
+                  style: coloredStyle(),
+                ),
+              ),
+              if (showActions)
+                DataCell(
+                  _RegistrationActions(
+                    isProcessing: processingUids.contains(registration.uid),
+                    onApprove: () => onApprove(registration.uid),
+                    onReject: () => onReject(registration.uid),
+                  ),
+                ),
             ],
-            rows: registrations.map((registration) {
-              final statusColor = registration.status.toLowerCase() == 'approved'
-                  ? Colors.green
-                  : registration.status.toLowerCase() == 'rejected'
-                      ? Colors.red
-                      : null;
+          );
+        }).toList();
 
-              TextStyle? coloredStyle([FontWeight? fontWeight]) => statusColor ==
-                      null
-                  ? null
-                  : TextStyle(color: statusColor, fontWeight: fontWeight);
-
-              return DataRow(
-                cells: [
-                  DataCell(
-                    Text(
-                      registration.registrationNumber,
-                      style: coloredStyle(),
-                    ),
+        return Scrollbar(
+          controller: horizontalController,
+          thumbVisibility: true,
+          notificationPredicate: (notification) {
+            return notification.metrics.axis == Axis.horizontal;
+          },
+          child: SingleChildScrollView(
+            controller: horizontalController,
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Scrollbar(
+                controller: verticalController,
+                thumbVisibility: true,
+                notificationPredicate: (notification) {
+                  return notification.metrics.axis == Axis.vertical;
+                },
+                child: SingleChildScrollView(
+                  controller: verticalController,
+                  child: DataTable(
+                    columns: [
+                      const DataColumn(label: Text('Registration No.')),
+                      const DataColumn(label: Text('Entity Name')),
+                      const DataColumn(label: Text('Officer Name')),
+                      const DataColumn(label: Text('Mobile')),
+                      const DataColumn(label: Text('Email')),
+                      const DataColumn(label: Text('Role')),
+                      const DataColumn(label: Text('District')),
+                      if (showStatus) const DataColumn(label: Text('Status')),
+                      DataColumn(label: Text(timestampLabel)),
+                      if (showActions) const DataColumn(label: Text('Actions')),
+                    ],
+                    rows: rows,
                   ),
-                  DataCell(
-                    Text(
-                      registration.entityName,
-                      style: coloredStyle(),
-                    ),
-                  ),
-                  DataCell(
-                    Text(
-                      registration.officerName,
-                      style: coloredStyle(),
-                    ),
-                  ),
-                  DataCell(Text(registration.mobile, style: coloredStyle())),
-                  DataCell(Text(registration.email, style: coloredStyle())),
-                  DataCell(Text(registration.role, style: coloredStyle())),
-                  DataCell(Text(registration.districtId, style: coloredStyle())),
-                  if (showStatus)
-                    DataCell(
-                      Text(
-                        registration.status,
-                        style: coloredStyle(FontWeight.w700),
-                      ),
-                    ),
-                  DataCell(
-                    Text(
-                      timestampBuilder(registration),
-                      style: coloredStyle(),
-                    ),
-                  ),
-                  if (showActions)
-                    DataCell(
-                      _RegistrationActions(
-                        isProcessing: processingUids.contains(registration.uid),
-                        onApprove: () => onApprove(registration.uid),
-                        onReject: () => onReject(registration.uid),
-                      ),
-                    ),
-                ],
-              );
-            }).toList(),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

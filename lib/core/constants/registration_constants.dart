@@ -10,6 +10,7 @@ class RegistrationConstants {
     'Amritsar',
     'Bathinda',
     'Jalandhar',
+    'Hoshiarpur',
     'Ludhiana',
     'Mansa',
     'Patiala',
