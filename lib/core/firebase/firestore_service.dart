@@ -47,35 +47,9 @@ class FirestoreService {
 
   Stream<QuerySnapshot<Map<String, dynamic>>> streamCollegeCorrectionStudents(
     String collegeId,
-  ) async* {
-    final id = collegeId.trim();
-    final aliases = <String>{id};
-    // Resolve legacy college names only through the college directory.
-    final matches = await Future.wait([
-      _colleges.doc(id).get(),
-      ...['collegeId', 'name', 'shortName'].map((field) async {
-        final result = await _colleges
-            .where(field, isEqualTo: id)
-            .limit(1)
-            .get();
-        return result.docs.isEmpty ? null : result.docs.first;
-      }),
-    ]);
-    for (final college in matches) {
-      final data = college?.data();
-      if (college == null || data == null) continue;
-      aliases.add(college.id);
-      for (final field in ['collegeId', 'name', 'shortName']) {
-        final value = data[field];
-        if (value is String && value.trim().isNotEmpty) {
-          aliases.add(value.trim());
-        }
-      }
-    }
-    yield* (aliases.length == 1
-            ? _students.where('collegeId', isEqualTo: id)
-            : _students.where('collegeId', whereIn: aliases.toList()))
-        .snapshots();
+  ) {
+    // Rules require the canonical users/{uid}.collegeId, never directory aliases.
+    return _students.where('collegeId', isEqualTo: collegeId.trim()).snapshots();
   }
 
   Stream<List<PendingRegistration>> streamPendingRegistrations() {
@@ -417,6 +391,7 @@ class FirestoreService {
       });
 
       transaction.update(studentRef, {
+        'correctionRequestId': requestRef.id,
         'correctionRequestStatus': 'pending',
         'correctionRequestedAt': now,
         'correctionRejectedAt': FieldValue.delete(),

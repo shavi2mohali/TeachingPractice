@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // Pending self-registrations never confer application privileges.
+    function role(value) {
+      return signedIn() && profile().role == value && profile().status == 'approved';
+    }
+    function admin() { return role('admin'); }
+    function college(data) {
+      return role('college') && profile().collegeId is string
+        && profile().collegeId != '' && data.collegeId == profile().collegeId;
+    }
+    function district(data) {
+      return (role('deo') || role('diet')) && profile().districtId != ''
+        && data.districtId == profile().districtId;
+    }
+    function school(data) {
+      return role('school') && profile().schoolId != ''
+        && data.schoolId == profile().schoolId;
+    }
+    function studentReadable(data) {
+      return college(data) || district(data)
+        || (role('school') && profile().schoolId != ''
+          && data.finalSchoolId == profile().schoolId);
+    }
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+    function correctionSubmission(studentId) {
+      let next = request.resource.data;
+      let path = /databases/$(database)/documents/correction_requests/$(next.correctionRequestId);
+      let correction = getAfter(path).data;
+      return college(resource.data)
+        && resource.data.get('correctionRequestStatus', '') in ['', 'rejected']
+        && changedOnly(['correctionRequestId', 'correctionRequestStatus',
+          'correctionRequestedAt', 'correctionRejectedAt',
+          'correctionRejectedRemarks', 'correctionApprovedAt', 'updatedAt'])
+        && next.correctionRequestStatus == 'pending'
+        && !exists(path)
+        && correction.studentId == studentId
+        && correction.collegeId == resource.data.collegeId
+        && correction.requestedBy == request.auth.uid
+        && correction.status == 'pending';
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow read, write: if admin();
+      // Only administrators can approve or change role/tenant identifiers.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role in ['college', 'deo', 'diet', 'school']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['uid', 'status', 'registrationNumber',
+          'role', 'districtId', 'officerName', 'mobile', 'email', 'collegeId',
+          'schoolId', 'dietId', 'createdAt']);
+    }
+
+    match /students/{studentId} {
+      allow read, write: if admin();
+      allow read: if studentReadable(resource.data);
+      allow update: if correctionSubmission(studentId);
+      // Preserve proposal submission and district review/assignment fields only.
+      allow update: if college(resource.data)
+        && resource.data.status in ['created', 'deoRejected']
+        && request.resource.data.status == 'proposed'
+        && changedOnly(['status', 'proposedSchoolId', 'submittedOn', 'updatedAt']);
+      allow update: if district(resource.data) && (
+        (role('deo') && request.resource.data.status in ['deoApproved', 'deoRejected']
+          && changedOnly(['status', 'proposedSchoolId', 'updatedAt']))
+        || (role('diet') && request.resource.data.status == 'assigned_by_diet'
+          && changedOnly(['status', 'finalSchoolId', 'updatedAt'])));
+    }
+
+    match /correction_requests/{requestId} {
+      allow read, update: if admin();
+      allow read: if college(resource.data);
+      allow create: if college(request.resource.data)
+        && request.resource.data.requestId == requestId
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['requestId', 'studentId',
+          'registrationId', 'collegeId', 'districtId', 'requestedBy', 'studentName',
+          'fatherName', 'motherName', 'nameCorrectionEnglish', 'namePunjabi',
+          'fatherNameCorrectionEnglish', 'fatherNamePunjabi',
+          'motherNameCorrectionEnglish', 'motherNamePunjabi', 'certificateFileName',
+          'certificateMimeType', 'certificatePdf', 'status', 'createdAt', 'updatedAt'])
+        && college(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data);
+      // No college update/delete permission, including approve/reject.
+    }
+
+    // Directory lookups are used before authentication by registration dropdowns.
+    match /{directory}/{id} {
+      allow read: if directory in ['colleges', 'schools', 'diets'];
+      allow write: if directory in ['colleges', 'schools', 'diets'] && admin();
+    }
+    match /schools/{id} {
+      allow update: if role('diet') && district(resource.data)
+        && changedOnly(['currentAssignedCount', 'updatedAt'])
+        && request.resource.data.currentAssignedCount == resource.data.currentAssignedCount + 1;
+    }
+    match /proposals/{id} {
+      allow read, write: if admin();
+      allow read: if college(resource.data) || district(resource.data);
+      allow create: if college(request.resource.data)
+        && request.resource.data.status == 'pending'
+        && college(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data);
+      allow update: if district(resource.data) && (
+        (role('deo') && request.resource.data.status in ['approved', 'rejected']
+          && changedOnly(['status', 'reviewedBy', 'reviewedAt', 'rejectionReason',
+            'proposedSchoolId', 'updatedAt']))
+        || (role('diet') && request.resource.data.status == 'assigned_by_diet'
+          && changedOnly(['status', 'finalAssignedBy', 'finalAssignedAt', 'updatedAt'])));
+    }
+    match /allocations/{id} {
+      allow read, write: if admin();
+      allow read: if college(resource.data) || district(resource.data) || school(resource.data);
+      allow create: if role('diet') && district(request.resource.data)
+        && district(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data)
+        && district(get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data);
+    }
+    match /{collection}/{id} {
+      allow read, write: if collection in ['attendance', 'certificates'] && admin();
+      // Student-bound lookup also supports existing studentId-only queries.
+      allow read: if collection in ['attendance', 'certificates']
+        && studentReadable(get(/databases/$(database)/documents/students/$(resource.data.studentId)).data);
+      allow create: if collection in ['attendance', 'certificates']
+        && school(request.resource.data)
+        && studentReadable(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data);
+      allow update: if collection in ['attendance', 'certificates']
+        && school(resource.data) && school(request.resource.data)
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.allocationId == resource.data.allocationId
+        && studentReadable(get(/databases/$(database)/documents/students/$(resource.data.studentId)).data);
+    }
+    // Unmatched collections and subcollections are denied by default.
+  }
+}
