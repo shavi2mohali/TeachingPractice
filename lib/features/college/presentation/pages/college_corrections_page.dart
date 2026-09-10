@@ -581,7 +581,8 @@ class _CollegeCorrectionDetailPageState
     try {
       final studentData = widget.student.data();
       await _firestoreService.createCorrectionRequest(
-        studentId: _studentIdentifier(widget.student),
+        // Rules and the transaction reference the actual Firestore document.
+        studentId: widget.student.id,
         registrationId: _registrationId(widget.student),
         collegeId: (user.collegeId ?? '').trim(),
         districtId: user.districtId ?? '',
@@ -629,15 +630,6 @@ class _CollegeCorrectionDetailPageState
     }
 
     return null;
-  }
-
-  String _studentIdentifier(
-    QueryDocumentSnapshot<Map<String, dynamic>> student,
-  ) {
-    final data = student.data();
-    return data['studentId'] as String? ??
-        data['registrationId'] as String? ??
-        student.id;
   }
 
   String _registrationId(QueryDocumentSnapshot<Map<String, dynamic>> student) {

@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 import '../constants/registration_constants.dart';
 import '../../features/auth/data/models/user_model.dart';
@@ -129,7 +128,33 @@ class FirebaseAuthService {
       );
     }
 
-    final appUser = UserModel.fromMap({...snapshot.data()!, 'uid': uid});
+    final data = snapshot.data()!;
+    // Validate the stored values before UserModel trims collegeId. Rules compare
+    // these fields exactly; client-side normalization cannot repair a profile.
+    final storedRole = data['role'];
+    if (storedRole is String && storedRole.trim().toLowerCase() == 'college') {
+      final collegeId = data['collegeId'];
+      final status = data['status'];
+      if (storedRole != 'college' ||
+          status is! String ||
+          !['pending', 'approved', 'rejected'].contains(status) ||
+          collegeId is! String ||
+          collegeId.isEmpty ||
+          collegeId != collegeId.trim() ||
+          collegeId.contains('/')) {
+        await _firebaseAuth.signOut();
+        throw FirebaseAuthException(
+          code: 'invalid-college-profile',
+          message: 'Your college profile needs administrator correction: '
+              'role must be college, status must be pending, approved or '
+              'rejected, and collegeId must be the canonical college document '
+              'ID without surrounding spaces. Only approved accounts can log in.',
+        );
+      }
+    }
+    // The authenticated document ID is authoritative, including legacy profiles
+    // without a redundant uid field.
+    final appUser = UserModel.fromMap({...data, 'uid': uid});
 
     if (appUser.role.trim().isEmpty) {
       throw FirebaseException(

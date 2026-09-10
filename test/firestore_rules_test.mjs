@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs,
   collection, query, where, setDoc, updateDoc, deleteDoc, writeBatch,
-  deleteField, Timestamp, setLogLevel } from 'firebase/firestore';
+  deleteField, Timestamp, Bytes, setLogLevel } from 'firebase/firestore';
 
 const projectId = 'demo-college-rules';
 const host = process.env.FIRESTORE_EMULATOR_HOST;
@@ -45,8 +45,21 @@ try {
   await seed('students/a', { collegeId: 'A', districtId: 'D', finalSchoolId: 'S', name: 'Original', status: 'created' });
   await seed('students/b', { collegeId: 'B', districtId: 'E', finalSchoolId: 'T', name: 'Other', status: 'created' });
   await seed('correction_requests/existing-b', { collegeId: 'B', studentId: 'b', status: 'pending' });
+  await seed('users/no-status', { role: 'college', collegeId: 'A' });
+  await seed('users/no-college', { role: 'college', status: 'approved' });
+  await seed('users/no-uid', { role: 'college', status: 'approved', collegeId: 'A' });
+  await seed('users/spaces', { role: 'college', status: 'approved', collegeId: ' A ' });
+  await seed('students/document-id', { collegeId: 'A', studentId: 'legacy-number', registrationId: 'registration-number', status: 'created' });
   const a = client('a'), b = client('b'), admin = client('admin'), anon = client(), pending = client('pending');
   const deo = client('deo'), diet = client('diet'), school = client('school'), newcomer = client('new');
+  for (const uid of ['no-status', 'no-college', 'spaces', 'no-profile']) {
+    const invalid = client(uid);
+    await allowed(`${uid}: own profile read`, () => getDoc(doc(invalid, `users/${uid}`)));
+    await denied(`${uid}: canonical student query denied`, () => getDocs(query(collection(invalid, 'students'), where('collegeId', '==', 'A'))));
+    await denied(`${uid}: canonical request query denied`, () => getDocs(query(collection(invalid, 'correction_requests'), where('collegeId', '==', 'A'))));
+  }
+  const noUid = client('no-uid');
+  await allowed('legacy profile without uid uses authenticated document ID', () => getDocs(query(collection(noUid, 'students'), where('collegeId', '==', 'A'))));
   await allowed('own profile', () => getDoc(doc(a, 'users/a')));
   await denied('other profile', () => getDoc(doc(a, 'users/b')));
   await denied('self promotion', () => updateDoc(doc(a, 'users/a'), { role: 'admin' }));
@@ -68,6 +81,27 @@ try {
   await allowed('school student query', () => getDocs(query(collection(school, 'students'), where('finalSchoolId', '==', 'S'))));
   await denied('school other student', () => getDoc(doc(school, 'students/b')));
   const request = (id, extra = {}) => ({ requestId: id, studentId: 'a', collegeId: 'A', requestedBy: 'a', status: 'pending', ...extra });
+  await denied('stored student number is not a document path', () => setDoc(doc(a, 'correction_requests/wrong-path'), request('wrong-path', { studentId: 'legacy-number' })));
+  await allowed('full submission uses actual document ID despite different stored identifiers', async () => {
+    const now = Timestamp.now();
+    const batch = writeBatch(a);
+    batch.set(doc(a, 'correction_requests/canonical-path'), request('canonical-path', {
+      studentId: 'document-id', registrationId: 'registration-number', districtId: 'D',
+      studentName: 'Student', fatherName: 'Father', motherName: 'Mother',
+      nameCorrectionEnglish: 'Corrected', namePunjabi: '',
+      fatherNameCorrectionEnglish: '', fatherNamePunjabi: '',
+      motherNameCorrectionEnglish: '', motherNamePunjabi: '',
+      certificateFileName: 'certificate.pdf', certificateMimeType: 'application/pdf',
+      certificatePdf: Bytes.fromUint8Array(new Uint8Array([37, 80, 68, 70])), createdAt: now, updatedAt: now,
+    }));
+    batch.update(doc(a, 'students/document-id'), {
+      correctionRequestId: 'canonical-path', correctionRequestStatus: 'pending',
+      correctionRequestedAt: now, correctionRejectedAt: deleteField(),
+      correctionRejectedRemarks: deleteField(), correctionApprovedAt: deleteField(), updatedAt: now,
+    });
+    await batch.commit();
+  });
+  await denied('missing request link', () => updateDoc(doc(a, 'students/a'), { correctionRequestStatus: 'pending' }));
   await denied('cross-college request', () => setDoc(doc(a, 'correction_requests/cross'), request('cross', { collegeId: 'B' })));
   await denied('foreign student with own collegeId', () => setDoc(doc(a, 'correction_requests/foreign'), request('foreign', { studentId: 'b' })));
   await denied('pre-approved request', () => setDoc(doc(a, 'correction_requests/approved'), request('approved', { status: 'approved' })));
@@ -90,6 +124,8 @@ try {
   await denied('college cannot delete request', () => deleteDoc(doc(a, 'correction_requests/request-a')));
   await allowed('admin reads all students', () => getDocs(collection(admin, 'students')));
   await allowed('admin reads all requests', () => getDocs(collection(admin, 'correction_requests')));
+  await allowed('admin creates request', () => setDoc(doc(admin, 'correction_requests/admin-created'), request('admin-created')));
+  await allowed('admin deletes request', () => deleteDoc(doc(admin, 'correction_requests/admin-created')));
   await allowed('admin review transaction', async () => {
     const batch = writeBatch(admin);
     batch.update(doc(admin, 'correction_requests/request-a'), { status: 'approved' });

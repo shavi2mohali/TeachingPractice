@@ -7,12 +7,15 @@ service cloud.firestore {
     }
     // Pending self-registrations never confer application privileges.
     function role(value) {
-      return signedIn() && profile().role == value && profile().status == 'approved';
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().get('role', '') == value
+        && profile().get('status', '') == 'approved';
     }
     function admin() { return role('admin'); }
     function college(data) {
-      return role('college') && profile().collegeId is string
-        && profile().collegeId != '' && data.collegeId == profile().collegeId;
+      return role('college') && profile().get('collegeId', '') is string
+        && profile().get('collegeId', '') != '' && data.collegeId == profile().collegeId;
     }
     function district(data) {
       return (role('deo') || role('diet')) && profile().districtId != ''
@@ -63,7 +66,10 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read, write: if admin();
       allow read: if studentReadable(resource.data);
-      allow update: if correctionSubmission(studentId);
+      allow update: if college(resource.data)
+        && request.resource.data.get('correctionRequestId', '') is string
+        && request.resource.data.get('correctionRequestId', '') != ''
+        && correctionSubmission(studentId);
       // Preserve proposal submission and district review/assignment fields only.
       allow update: if college(resource.data)
         && resource.data.status in ['created', 'deoRejected']
@@ -77,9 +83,11 @@ service cloud.firestore {
     }
 
     match /correction_requests/{requestId} {
-      allow read, update: if admin();
+      allow read, write: if admin();
       allow read: if college(resource.data);
       allow create: if college(request.resource.data)
+        && request.resource.data.get('studentId', '') is string
+        && request.resource.data.get('studentId', '') != ''
         && request.resource.data.requestId == requestId
         && request.resource.data.requestedBy == request.auth.uid
         && request.resource.data.status == 'pending'
@@ -89,6 +97,7 @@ service cloud.firestore {
           'fatherNameCorrectionEnglish', 'fatherNamePunjabi',
           'motherNameCorrectionEnglish', 'motherNamePunjabi', 'certificateFileName',
           'certificateMimeType', 'certificatePdf', 'status', 'createdAt', 'updatedAt'])
+        && exists(/databases/$(database)/documents/students/$(request.resource.data.studentId))
         && college(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data);
       // No college update/delete permission, including approve/reject.
     }
