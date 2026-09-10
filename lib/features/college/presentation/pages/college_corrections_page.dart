@@ -14,9 +14,12 @@ class CollegeCorrectionsPage extends StatelessWidget {
   const CollegeCorrectionsPage({super.key});
 
   static const List<_CorrectionListColumn> _columns = [
-    _CorrectionListColumn('Registration Number', ['registrationId', 'studentId']),
+    _CorrectionListColumn('Registration Number', [
+      'registrationId',
+      'studentId',
+    ]),
     _CorrectionListColumn('Submitted On', ['correctionRequestedAt']),
-    _CorrectionListColumn('Name', ['name']),
+    _CorrectionListColumn('Name', ['studentName', 'name']),
     _CorrectionListColumn('Father Name', ['fatherName']),
     _CorrectionListColumn('Mother Name', ['motherName']),
     _CorrectionListColumn('Category Name', ['categoryName']),
@@ -40,14 +43,14 @@ class CollegeCorrectionsPage extends StatelessWidget {
             ? const Center(child: Text('College details not found'))
             : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: FirebaseFirestore.instance
-                    .collection('students')
+                    .collection('correction_requests')
                     .where('collegeId', isEqualTo: collegeId)
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return Center(
                       child: Text(
-                        'Unable to load students: ${snapshot.error}',
+                        'Unable to load correction requests: ${snapshot.error}',
                       ),
                     );
                   }
@@ -56,131 +59,67 @@ class CollegeCorrectionsPage extends StatelessWidget {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final students = snapshot.data?.docs ?? [];
+                  final requests = [...?snapshot.data?.docs];
+                  // College equality only: no composite index, and include
+                  // legacy requests that have no createdAt field.
+                  requests.sort((a, b) {
+                    final first = a.data()['createdAt'];
+                    final second = b.data()['createdAt'];
+                    return (second is Timestamp
+                            ? second.millisecondsSinceEpoch
+                            : 0)
+                        .compareTo(
+                          first is Timestamp ? first.millisecondsSinceEpoch : 0,
+                        );
+                  });
 
-                  if (students.isEmpty) {
-                    return const Center(child: Text('No students found'));
-                  }
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: FirestoreService().streamCollegeCorrectionStudents(
+                      collegeId,
+                    ),
+                    builder: (context, studentsSnapshot) {
+                      if (studentsSnapshot.hasError) {
+                        return Center(
+                          child: Text(
+                            'Unable to load students: ${studentsSnapshot.error}',
+                          ),
+                        );
+                      }
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _CollegeHeading(collegeId: collegeId),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SingleChildScrollView(
-                            child: DataTable(
-                              columns: [
-                                const DataColumn(label: Text('Sr. No.')),
-                                ..._columns.map(
-                                  (column) => DataColumn(
-                                    label: Text(
-                                      column.label,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              rows: students.asMap().entries.map((entry) {
-                                final student = entry.value;
-                                final data = student.data();
+                      if (studentsSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                                return DataRow(
-                                  cells: [
-                                    DataCell(Text('${entry.key + 1}')),
-                                    ..._columns.map((column) {
-                                      final value = _columnValue(
-                                        data,
-                                        column.keys,
-                                      );
+                      final studentsById =
+                          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
+                            for (final doc in studentsSnapshot.data?.docs ?? [])
+                              doc.id: doc,
+                          };
 
-                                    if (column.label ==
-                                          'Registration Number') {
-                                        final correctionStatus =
-                                            (data['correctionRequestStatus']
-                                                    as String? ??
-                                                '')
-                                                .trim()
-                                                .toLowerCase();
-                                        final isSubmitted =
-                                            correctionStatus.isNotEmpty;
+                      if (requests.isEmpty && studentsById.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'No students or correction requests found for this college',
+                          ),
+                        );
+                      }
 
-                                        return DataCell(
-                                          isSubmitted
-                                              ? Text(
-                                                  _formatValue(value),
-                                                  style: const TextStyle(
-                                                    color: Colors.grey,
-                                                  ),
-                                                )
-                                              : TextButton(
-                                                  onPressed: () {
-                                                    Navigator.of(context).push(
-                                                      MaterialPageRoute<void>(
-                                                        builder: (_) =>
-                                                            CollegeCorrectionDetailPage(
-                                                          student: student,
-                                                          user: user,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                  child: Text(_formatValue(value)),
-                                                ),
-                                        );
-                                      }
-
-                                      if (column.label == 'Submitted On') {
-                                        final correctionStatus =
-                                            (data['correctionRequestStatus']
-                                                    as String? ??
-                                                '')
-                                                .trim()
-                                                .toLowerCase();
-
-                                        if (correctionStatus == 'approved') {
-                                          return const DataCell(
-                                            Text(
-                                              'Approved',
-                                              style: TextStyle(
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          );
-                                        }
-
-                                        if (correctionStatus == 'rejected') {
-                                          return const DataCell(
-                                            Text(
-                                              'Rejected',
-                                              style: TextStyle(
-                                                color: Colors.red,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          );
-                                        }
-
-                                        return DataCell(Text(_formatValue(value)));
-                                      }
-
-                                      return DataCell(
-                                        Text(_formatValue(value)),
-                                      );
-                                    }),
-                                  ],
-                                );
-                              }).toList(),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _CollegeHeading(collegeId: collegeId),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: _CorrectionsTable(
+                              requests: requests,
+                              studentsById: studentsById,
+                              user: user,
                             ),
                           ),
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -205,23 +144,233 @@ class CollegeCorrectionsPage extends StatelessWidget {
     return value.toString();
   }
 
-  static String _formatDateOnly(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year.toString();
-    return '$day/$month/$year';
-  }
-
   static String _formatDateTime(DateTime date) {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year.toString();
-    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12)
-        .toString()
-        .padLeft(2, '0');
+    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12).toString().padLeft(
+      2,
+      '0',
+    );
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '$day/$month/$year $hour:$minute $suffix';
+  }
+
+  static Future<void> _showRejectionRemarks(
+    BuildContext context,
+    String remarks,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Rejection Remarks'),
+          content: Text(
+            remarks.trim().isEmpty ? 'No remarks provided.' : remarks,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CorrectionsTable extends StatefulWidget {
+  const _CorrectionsTable({
+    required this.requests,
+    required this.studentsById,
+    required this.user,
+  });
+
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> requests;
+  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> studentsById;
+  final UserModel? user;
+
+  @override
+  State<_CorrectionsTable> createState() => _CorrectionsTableState();
+}
+
+class _CorrectionsTableState extends State<_CorrectionsTable> {
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep every request (including rejected history), then add students who
+    // have never submitted. Requests are already newest first.
+    final latestByStudent = <String, Map<String, dynamic>>{};
+    final rows = <Map<String, dynamic>>[];
+    for (final request in widget.requests) {
+      final data = request.data();
+      latestByStudent.putIfAbsent(
+        data['studentId'] as String? ?? '',
+        () => data,
+      );
+      rows.add(data);
+    }
+    for (final student in widget.studentsById.values) {
+      if (!latestByStudent.containsKey(student.id)) {
+        rows.add({
+          ...student.data(),
+          'studentId': student.id,
+          'status': student.data()['correctionRequestStatus'] ?? '',
+        });
+      }
+    }
+    return Scrollbar(
+      controller: _horizontalController,
+      thumbVisibility: true,
+      notificationPredicate: (notification) {
+        return notification.metrics.axis == Axis.horizontal;
+      },
+      child: SingleChildScrollView(
+        controller: _horizontalController,
+        scrollDirection: Axis.horizontal,
+        child: Scrollbar(
+          controller: _verticalController,
+          thumbVisibility: true,
+          notificationPredicate: (notification) {
+            return notification.metrics.axis == Axis.vertical;
+          },
+          child: SingleChildScrollView(
+            controller: _verticalController,
+            child: DataTable(
+              columns: [
+                const DataColumn(label: Text('Sr. No.')),
+                ...CollegeCorrectionsPage._columns.map(
+                  (column) => DataColumn(
+                    label: Text(
+                      column.label,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+              rows: rows.asMap().entries.map((entry) {
+                final data = entry.value;
+                final studentId = data['studentId'] as String? ?? '';
+                final student = widget.studentsById[studentId];
+                final studentData = student?.data() ?? <String, dynamic>{};
+                final combinedData = <String, dynamic>{...studentData, ...data};
+
+                return DataRow(
+                  cells: [
+                    DataCell(Text('${entry.key + 1}')),
+                    ...CollegeCorrectionsPage._columns.map((column) {
+                      final value = CollegeCorrectionsPage._columnValue(
+                        combinedData,
+                        column.keys,
+                      );
+
+                      if (column.label == 'Registration Number') {
+                        final correctionStatus =
+                            (latestByStudent[studentId]?['status'] as String? ??
+                                    studentData['correctionRequestStatus']
+                                        as String? ??
+                                    '')
+                                .trim()
+                                .toLowerCase();
+                        final isClickable =
+                            (correctionStatus.isEmpty ||
+                                correctionStatus == 'rejected') &&
+                            student != null;
+
+                        return DataCell(
+                          isClickable
+                              ? TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            CollegeCorrectionDetailPage(
+                                              student: student,
+                                              user: widget.user,
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                  child: Text(
+                                    CollegeCorrectionsPage._formatValue(value),
+                                  ),
+                                )
+                              : Text(
+                                  CollegeCorrectionsPage._formatValue(value),
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                        );
+                      }
+
+                      if (column.label == 'Submitted On') {
+                        final correctionStatus =
+                            (data['status'] as String? ?? '')
+                                .trim()
+                                .toLowerCase();
+
+                        if (correctionStatus == 'approved') {
+                          return const DataCell(
+                            Text(
+                              'Approved',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          );
+                        }
+
+                        if (correctionStatus == 'rejected') {
+                          return DataCell(
+                            InkWell(
+                              onTap: () =>
+                                  CollegeCorrectionsPage._showRejectionRemarks(
+                                    context,
+                                    data['rejectionRemarks'] as String? ?? '',
+                                  ),
+                              child: const Text(
+                                'Rejected',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return DataCell(
+                          Text(
+                            correctionStatus.isEmpty
+                                ? 'Not submitted'
+                                : 'Pending — ${CollegeCorrectionsPage._formatValue(data['createdAt'] ?? data['correctionRequestedAt'])}',
+                          ),
+                        );
+                      }
+
+                      return DataCell(
+                        Text(CollegeCorrectionsPage._formatValue(value)),
+                      );
+                    }),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -297,9 +446,9 @@ class _CollegeCorrectionDetailPageState
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               ..._detailFields.asMap().entries.map((entry) {
                 final field = entry.value;
 
@@ -434,7 +583,7 @@ class _CollegeCorrectionDetailPageState
       await _firestoreService.createCorrectionRequest(
         studentId: _studentIdentifier(widget.student),
         registrationId: _registrationId(widget.student),
-        collegeId: user.collegeId ?? '',
+        collegeId: (user.collegeId ?? '').trim(),
         districtId: user.districtId ?? '',
         requestedBy: user.uid,
         studentName: studentData['name'] as String? ?? '',
@@ -442,11 +591,11 @@ class _CollegeCorrectionDetailPageState
         motherName: studentData['motherName'] as String? ?? '',
         nameCorrectionEnglish: _nameCorrectionEnglishController.text.trim(),
         namePunjabi: _namePunjabiController.text.trim(),
-        fatherNameCorrectionEnglish:
-            _fatherNameCorrectionEnglishController.text.trim(),
+        fatherNameCorrectionEnglish: _fatherNameCorrectionEnglishController.text
+            .trim(),
         fatherNamePunjabi: _fatherNamePunjabiController.text.trim(),
-        motherNameCorrectionEnglish:
-            _motherNameCorrectionEnglishController.text.trim(),
+        motherNameCorrectionEnglish: _motherNameCorrectionEnglishController.text
+            .trim(),
         motherNamePunjabi: _motherNamePunjabiController.text.trim(),
         certificateBytes: _certificateBytes!,
         certificateFileName: _certificateFileName!,
@@ -465,9 +614,7 @@ class _CollegeCorrectionDetailPageState
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to submit correction request: $error'),
-        ),
+        SnackBar(content: Text('Unable to submit correction request: $error')),
       );
     } finally {
       if (mounted) {
@@ -484,7 +631,9 @@ class _CollegeCorrectionDetailPageState
     return null;
   }
 
-  String _studentIdentifier(QueryDocumentSnapshot<Map<String, dynamic>> student) {
+  String _studentIdentifier(
+    QueryDocumentSnapshot<Map<String, dynamic>> student,
+  ) {
     final data = student.data();
     return data['studentId'] as String? ??
         data['registrationId'] as String? ??
@@ -598,10 +747,7 @@ class _CorrectionInputRow extends StatelessWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Text('Original Value: $originalValue'),
               const SizedBox(height: 8),

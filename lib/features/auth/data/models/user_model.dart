@@ -43,7 +43,7 @@ class UserModel {
       status: map['status'] as String? ?? '',
       registrationNumber: map['registrationNumber'] as String?,
       districtId: map['districtId'] as String?,
-      collegeId: map['collegeId'] as String?,
+      collegeId: (map['collegeId'] as String?)?.trim(),
       dietId: map['dietId'] as String?,
       schoolId: map['schoolId'] as String?,
       isActive: map['isActive'] as bool? ?? true,

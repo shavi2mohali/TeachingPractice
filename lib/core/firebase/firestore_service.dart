@@ -9,7 +9,7 @@ import '../../features/school/data/models/certificate_model.dart';
 
 class FirestoreService {
   FirestoreService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
   static const int _totalTrainingDays = 28;
 
@@ -44,6 +44,39 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> get _correctionRequests =>
       _firestore.collection('correction_requests');
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> streamCollegeCorrectionStudents(
+    String collegeId,
+  ) async* {
+    final id = collegeId.trim();
+    final aliases = <String>{id};
+    // Resolve legacy college names only through the college directory.
+    final matches = await Future.wait([
+      _colleges.doc(id).get(),
+      ...['collegeId', 'name', 'shortName'].map((field) async {
+        final result = await _colleges
+            .where(field, isEqualTo: id)
+            .limit(1)
+            .get();
+        return result.docs.isEmpty ? null : result.docs.first;
+      }),
+    ]);
+    for (final college in matches) {
+      final data = college?.data();
+      if (college == null || data == null) continue;
+      aliases.add(college.id);
+      for (final field in ['collegeId', 'name', 'shortName']) {
+        final value = data[field];
+        if (value is String && value.trim().isNotEmpty) {
+          aliases.add(value.trim());
+        }
+      }
+    }
+    yield* (aliases.length == 1
+            ? _students.where('collegeId', isEqualTo: id)
+            : _students.where('collegeId', whereIn: aliases.toList()))
+        .snapshots();
+  }
 
   Stream<List<PendingRegistration>> streamPendingRegistrations() {
     return _users
@@ -126,10 +159,8 @@ class FirestoreService {
         .map(
           (snapshot) => snapshot.docs
               .map(
-                (doc) => SchoolModel.fromMap({
-                  ...doc.data(),
-                  'schoolId': doc.id,
-                }),
+                (doc) =>
+                    SchoolModel.fromMap({...doc.data(), 'schoolId': doc.id}),
               )
               .toList(),
         );
@@ -144,15 +175,12 @@ class FirestoreService {
     }
 
     return query.snapshots().map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => SchoolModel.fromMap({
-                  ...doc.data(),
-                  'schoolId': doc.id,
-                }),
-              )
-              .toList(),
-        );
+      (snapshot) => snapshot.docs
+          .map(
+            (doc) => SchoolModel.fromMap({...doc.data(), 'schoolId': doc.id}),
+          )
+          .toList(),
+    );
   }
 
   Stream<List<StudentModel>> streamStudentsByCollege(String collegeId) {
@@ -163,10 +191,8 @@ class FirestoreService {
         .map(
           (snapshot) => snapshot.docs
               .map(
-                (doc) => StudentModel.fromMap({
-                  ...doc.data(),
-                  'studentId': doc.id,
-                }),
+                (doc) =>
+                    StudentModel.fromMap({...doc.data(), 'studentId': doc.id}),
               )
               .toList(),
         );
@@ -174,19 +200,19 @@ class FirestoreService {
 
   Stream<List<StudentModel>> streamStudents() {
     return _students.snapshots().map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => StudentModel.fromMap({
-                  ...doc.data(),
-                  'studentId': doc.id,
-                }),
-              )
-              .toList(),
-        );
+      (snapshot) => snapshot.docs
+          .map(
+            (doc) => StudentModel.fromMap({...doc.data(), 'studentId': doc.id}),
+          )
+          .toList(),
+    );
   }
 
   Stream<List<AttendanceModel>> streamAttendanceByStudent(String studentId) {
-    return _attendance.where('studentId', isEqualTo: studentId).snapshots().map(
+    return _attendance
+        .where('studentId', isEqualTo: studentId)
+        .snapshots()
+        .map(
           (snapshot) => snapshot.docs
               .map(
                 (doc) => AttendanceModel.fromMap({
@@ -245,15 +271,13 @@ class FirestoreService {
     }
 
     return query.snapshots().map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => ProposalModel.fromMap({
-                  ...doc.data(),
-                  'proposalId': doc.id,
-                }),
-              )
-              .toList(),
-        );
+      (snapshot) => snapshot.docs
+          .map(
+            (doc) =>
+                ProposalModel.fromMap({...doc.data(), 'proposalId': doc.id}),
+          )
+          .toList(),
+    );
   }
 
   Future<StudentModel?> getStudentById(String studentId) async {
@@ -286,34 +310,34 @@ class FirestoreService {
         .where('status', isEqualTo: 'active')
         .snapshots()
         .asyncMap((snapshot) async {
-      final records = <AssignedStudentRecord>[];
+          final records = <AssignedStudentRecord>[];
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final studentId = data['studentId'] as String? ?? '';
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final studentId = data['studentId'] as String? ?? '';
 
-        if (studentId.isEmpty) {
-          continue;
-        }
+            if (studentId.isEmpty) {
+              continue;
+            }
 
-        final student = await getStudentById(studentId);
+            final student = await getStudentById(studentId);
 
-        if (student == null) {
-          continue;
-        }
+            if (student == null) {
+              continue;
+            }
 
-        records.add(
-          AssignedStudentRecord(
-            allocationId: data['allocationId'] as String? ?? doc.id,
-            student: student,
-            schoolId: data['schoolId'] as String? ?? schoolId,
-            assignedAt: _dateTimeFromValue(data['assignedAt']),
-          ),
-        );
-      }
+            records.add(
+              AssignedStudentRecord(
+                allocationId: data['allocationId'] as String? ?? doc.id,
+                student: student,
+                schoolId: data['schoolId'] as String? ?? schoolId,
+                assignedAt: _dateTimeFromValue(data['assignedAt']),
+              ),
+            );
+          }
 
-      return records;
-    });
+          return records;
+        });
   }
 
   Future<String> createProposal(ProposalModel proposal) async {
@@ -362,13 +386,17 @@ class FirestoreService {
     final requestRef = _correctionRequests.doc();
     final studentRef = _students.doc(studentId);
     final now = Timestamp.now();
+    final normalizedCollegeId = collegeId.trim();
+    if (normalizedCollegeId.isEmpty) {
+      throw StateError('College details not found');
+    }
 
     await _firestore.runTransaction((transaction) async {
       transaction.set(requestRef, {
         'requestId': requestRef.id,
         'studentId': studentId,
         'registrationId': registrationId,
-        'collegeId': collegeId,
+        'collegeId': normalizedCollegeId,
         'districtId': districtId,
         'requestedBy': requestedBy,
         'studentName': studentName,
@@ -391,6 +419,9 @@ class FirestoreService {
       transaction.update(studentRef, {
         'correctionRequestStatus': 'pending',
         'correctionRequestedAt': now,
+        'correctionRejectedAt': FieldValue.delete(),
+        'correctionRejectedRemarks': FieldValue.delete(),
+        'correctionApprovedAt': FieldValue.delete(),
         'updatedAt': now,
       });
     });
@@ -441,6 +472,8 @@ class FirestoreService {
           'motherNamePunjabi': motherNamePunjabi.trim(),
         'correctionRequestStatus': 'approved',
         'correctionApprovedAt': now,
+        'correctionRejectedAt': FieldValue.delete(),
+        'correctionRejectedRemarks': FieldValue.delete(),
         'updatedAt': now,
       });
     });
@@ -450,6 +483,7 @@ class FirestoreService {
     required String requestId,
     required String studentId,
     required String reviewedBy,
+    required String remarks,
   }) async {
     final requestRef = _correctionRequests.doc(requestId);
     final studentRef = _students.doc(studentId);
@@ -460,12 +494,14 @@ class FirestoreService {
         'status': 'rejected',
         'reviewedBy': reviewedBy,
         'reviewedAt': now,
+        'rejectionRemarks': remarks.trim(),
         'updatedAt': now,
       });
 
       transaction.update(studentRef, {
         'correctionRequestStatus': 'rejected',
         'correctionRejectedAt': now,
+        'correctionRejectedRemarks': remarks.trim(),
         'updatedAt': now,
       });
     });
@@ -595,8 +631,10 @@ class FirestoreService {
     required String studentId,
     String? allocationId,
   }) async {
-    Query<Map<String, dynamic>> query =
-        _attendance.where('studentId', isEqualTo: studentId);
+    Query<Map<String, dynamic>> query = _attendance.where(
+      'studentId',
+      isEqualTo: studentId,
+    );
 
     if (allocationId != null && allocationId.isNotEmpty) {
       query = query.where('allocationId', isEqualTo: allocationId);
@@ -709,10 +747,7 @@ class FirestoreService {
   ) async {
     final registrations = await Future.wait(
       snapshot.docs.map((doc) async {
-        final data = <String, dynamic>{
-          ...doc.data(),
-          'uid': doc.id,
-        };
+        final data = <String, dynamic>{...doc.data(), 'uid': doc.id};
 
         data['entityName'] = await _resolveEntityName(data);
         return PendingRegistration.fromMap(data);
@@ -807,7 +842,8 @@ class PendingRegistration {
       role: role,
       status: map['status'] as String? ?? '',
       districtId: map['districtId'] as String? ?? '',
-      officerName: map['officerName'] as String? ?? map['name'] as String? ?? '',
+      officerName:
+          map['officerName'] as String? ?? map['name'] as String? ?? '',
       entityName: _entityNameFromMap(map, role),
       mobile: map['mobile'] as String? ?? map['phone'] as String? ?? '',
       email: map['email'] as String? ?? '',
@@ -845,9 +881,7 @@ class PendingRegistration {
             map['officerName'] as String? ??
             '';
       case 'deo':
-        return map['deoName'] as String? ??
-            map['officerName'] as String? ??
-            '';
+        return map['deoName'] as String? ?? map['officerName'] as String? ?? '';
       default:
         return map['officerName'] as String? ?? map['name'] as String? ?? '';
     }

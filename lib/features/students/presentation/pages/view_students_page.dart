@@ -101,16 +101,18 @@ class _StudentsTableState extends State<_StudentsTable> {
   final FirestoreService _firestoreService = FirestoreService();
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
-  final Set<String> _processingStudentIds = <String>{};
-  final Set<String> _confirmedStudentIds = <String>{};
-  String? _selectedSchoolId;
+  String? _sortColumnLabel;
+  bool _sortAscending = true;
 
   static const List<_StudentColumn> _fixedColumns = [
     _StudentColumn('Registration Id', ['registrationId', 'studentId']),
     _StudentColumn('Name', ['name']),
+    _StudentColumn('Name in Punjabi', ['namePunjabi']),
     _StudentColumn('DOB', ['dob', 'dateOfBirth']),
     _StudentColumn('Father Name', ['fatherName']),
+    _StudentColumn('Father Name in Punjabi', ['fatherNamePunjabi']),
     _StudentColumn('Mother Name', ['motherName']),
+    _StudentColumn('Mother Name in Punjabi', ['motherNamePunjabi']),
     _StudentColumn('Category Name', ['categoryName']),
     _StudentColumn('Alloted category', ['allotedCategory']),
     _StudentColumn('Marks Obtained in 12th', ['marks12th']),
@@ -166,14 +168,16 @@ class _StudentsTableState extends State<_StudentsTable> {
                       const DataColumn(label: Text('Sr. No.')),
                       ..._fixedColumns.map(
                         (column) => DataColumn(
-                          label: Text(
-                            column.label,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          onSort: (_, __) => _sortBy(column.label),
+                          label: _SortableHeader(
+                            label: column.label,
+                            isActive: _sortColumnLabel == column.label,
+                            ascending: _sortAscending,
                           ),
                         ),
                       ),
                     ],
-                    rows: widget.students
+                    rows: _sortedStudents()
                         .asMap()
                         .entries
                         .map(
@@ -231,14 +235,64 @@ class _StudentsTableState extends State<_StudentsTable> {
         student.id;
   }
 
+  void _sortBy(String columnLabel) {
+    setState(() {
+      if (_sortColumnLabel == columnLabel) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumnLabel = columnLabel;
+        _sortAscending = true;
+      }
+    });
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortedStudents() {
+    final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+      widget.students,
+    );
+    final sortLabel = _sortColumnLabel;
+
+    if (sortLabel == null) {
+      return sorted;
+    }
+
+    final column = _fixedColumns.firstWhere(
+      (item) => item.label == sortLabel,
+      orElse: () => const _StudentColumn('', []),
+    );
+
+    if (column.label.isEmpty) {
+      return sorted;
+    }
+
+    sorted.sort((first, second) {
+      final firstValue = _normalizedSortValue(
+        _columnValue(first.data(), column.keys),
+      );
+      final secondValue = _normalizedSortValue(
+        _columnValue(second.data(), column.keys),
+      );
+      final comparison = firstValue.compareTo(secondValue);
+      return _sortAscending ? comparison : -comparison;
+    });
+
+    return sorted;
+  }
+
   String _formatValue(dynamic value) {
     if (value == null) return '';
     if (value is Timestamp) return value.toDate().toString();
     return value.toString();
   }
+
+  String _normalizedSortValue(dynamic value) {
+    if (value == null) return '';
+    if (value is Timestamp) return value.toDate().toIso8601String();
+    return value.toString().toLowerCase();
+  }
 }
 
-class _CollegeStudentsTable extends StatelessWidget {
+class _CollegeStudentsTable extends StatefulWidget {
   const _CollegeStudentsTable({
     required this.students,
     required this.user,
@@ -246,35 +300,53 @@ class _CollegeStudentsTable extends StatelessWidget {
 
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
   final UserModel? user;
+  
+  @override
+  State<_CollegeStudentsTable> createState() => _CollegeStudentsTableState();
+}
+
+class _CollegeStudentsTableState extends State<_CollegeStudentsTable> {
   static const String _collegeInstruction =
       'ਆਪ ਦੀ ਸੰਸਥਾ ਵਿੱਚ ਦਾਖਲ ਹੇਠ ਲਿਖੇ ਸਿੱਖਿਆਰਥੀਆਂ ਦਾ ਰਜਿਸਟ੍ਰੇਸ਼ਨ ਨੰਬਰ ਕਲਿੱਕ ਕਰਦੇ ਹੋਏ ਅਗਲੇ ਪੇਜ ਦੇ ਅਖੀਰ ਵਿੱਚ ਐਲੀ੍ਮੈਂਟਰੀ ਸਕੂਲ ਦਾ ਨਾਮ ਸਲੈਕਟ ਕਰਦੇ ਹੋਏ ਸਬਮਿਟ ਕੀਤਾ ਜਾਵੇ।';
 
   static const List<_StudentColumn> _collegeColumns = [
-    _StudentColumn('Sr. No.', []),
     _StudentColumn('Registration Number', ['registrationId', 'studentId']),
     _StudentColumn('Submitted On', ['submittedOn']),
-    _StudentColumn('Allotted School', ['proposedSchoolName', 'finalSchoolName']),
+    _StudentColumn('Allotted School', ['finalSchoolName']),
     _StudentColumn('Name', ['name']),
+    _StudentColumn('Name in Punjabi', ['namePunjabi']),
     _StudentColumn('Father Name', ['fatherName']),
+    _StudentColumn('Father Name in Punjabi', ['fatherNamePunjabi']),
     _StudentColumn('Mother Name', ['motherName']),
+    _StudentColumn('Mother Name in Punjabi', ['motherNamePunjabi']),
     _StudentColumn('Category Name', ['categoryName']),
     _StudentColumn('Alloted Category', ['allotedCategory']),
     _StudentColumn('Joining Status', ['joiningStatus']),
   ];
 
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+  String? _sortColumnLabel;
+  bool _sortAscending = true;
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final collegeId = (user?.collegeId ?? '').trim();
-    final districtId = (user?.districtId ?? '').trim();
-    final horizontalController = ScrollController();
-    final verticalController = ScrollController();
+    final collegeId = (widget.user?.collegeId ?? '').trim();
+    final districtId = (widget.user?.districtId ?? '').trim();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: districtId.isEmpty
           ? null
           : FirebaseFirestore.instance
               .collection('schools')
-              .where('districtId', isEqualTo: districtId.trim())
+              .where('districtId', isEqualTo: districtId)
               .snapshots(),
       builder: (context, schoolSnapshot) {
         final schoolNames = <String, String>{
@@ -294,87 +366,52 @@ class _CollegeStudentsTable extends StatelessWidget {
             const SizedBox(height: 16),
             Expanded(
               child: Scrollbar(
-                controller: horizontalController,
+                controller: _horizontalController,
                 thumbVisibility: true,
                 notificationPredicate: (notification) {
                   return notification.metrics.axis == Axis.horizontal;
                 },
                 child: SingleChildScrollView(
-                  controller: horizontalController,
+                  controller: _horizontalController,
                   scrollDirection: Axis.horizontal,
                   child: Scrollbar(
-                    controller: verticalController,
+                    controller: _verticalController,
                     thumbVisibility: true,
                     notificationPredicate: (notification) {
                       return notification.metrics.axis == Axis.vertical;
                     },
                     child: SingleChildScrollView(
-                      controller: verticalController,
+                      controller: _verticalController,
                       child: DataTable(
-                        columns: _collegeColumns
-                            .map(
-                              (column) => DataColumn(
-                                label: Text(
-                                  column.label,
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                        columns: [
+                          const DataColumn(
+                            label: Text(
+                              'Sr. No.',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          ..._collegeColumns.map(
+                            (column) => DataColumn(
+                              onSort: (_, __) => _sortBy(column.label),
+                              label: _SortableHeader(
+                                label: column.label,
+                                isActive: _sortColumnLabel == column.label,
+                                ascending: _sortAscending,
                               ),
-                            )
-                            .toList(),
-                        rows: students
+                            ),
+                          ),
+                        ],
+                        rows: _sortedStudents()
                             .asMap()
                             .entries
                             .map(
                               (entry) => DataRow(
-                                cells: _collegeColumns.map((column) {
-                                  if (column.label == 'Sr. No.') {
-                                    return DataCell(Text('${entry.key + 1}'));
-                                  }
-
-                                  final studentData = entry.value.data();
-                                  final value =
-                                      _columnValue(studentData, column.keys);
-
-                              if (column.label == 'Registration Number') {
-                                final isSubmitted =
-                                    studentData['submittedOn'] != null;
-
-                                return DataCell(
-                                  isSubmitted
-                                      ? Text(
-                                          _formatValue(value),
-                                          style: const TextStyle(
-                                            color: Colors.grey,
-                                          ),
-                                        )
-                                      : TextButton(
-                                          onPressed: () {
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute<void>(
-                                                builder: (_) =>
-                                                    CollegeStudentDetailPage(
-                                                  student: entry.value,
-                                                  user: user,
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                          child: Text(_formatValue(value)),
-                                        ),
-                                );
-                              }
-
-                              if (column.label == 'Allotted School') {
-                                final schoolId =
-                                    studentData['finalSchoolId'] as String? ?? '';
-                                final schoolName =
-                                    schoolNames[schoolId] ??
-                                        _formatValue(value);
-                                return DataCell(Text(schoolName));
-                              }
-
-                                  return DataCell(Text(_formatValue(value)));
-                                }).toList(),
+                                cells: _studentCells(
+                                  context: context,
+                                  serialNumber: entry.key + 1,
+                                  student: entry.value,
+                                  schoolNames: schoolNames,
+                                ),
                               ),
                             )
                             .toList(),
@@ -405,6 +442,105 @@ class _CollegeStudentsTable extends StatelessWidget {
     if (value == null) return '';
     if (value is Timestamp) return value.toDate().toString();
     return value.toString();
+  }
+
+  List<DataCell> _studentCells({
+    required BuildContext context,
+    required int serialNumber,
+    required QueryDocumentSnapshot<Map<String, dynamic>> student,
+    required Map<String, String> schoolNames,
+  }) {
+    final studentData = student.data();
+
+    return [
+      DataCell(Text(serialNumber.toString())),
+      ..._collegeColumns.map((column) {
+        final value = _columnValue(studentData, column.keys);
+
+        if (column.label == 'Registration Number') {
+          final isSubmitted = studentData['submittedOn'] != null;
+
+          return DataCell(
+            isSubmitted
+                ? Text(
+                    _formatValue(value),
+                    style: const TextStyle(color: Colors.grey),
+                  )
+                : TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => CollegeStudentDetailPage(
+                            student: student,
+                            user: widget.user,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Text(_formatValue(value)),
+                  ),
+          );
+        }
+
+        if (column.label == 'Allotted School') {
+          final schoolId = studentData['finalSchoolId'] as String? ?? '';
+          final schoolName = schoolNames[schoolId] ?? _formatValue(value);
+          return DataCell(Text(schoolName));
+        }
+
+        return DataCell(Text(_formatValue(value)));
+      }),
+    ];
+  }
+
+  void _sortBy(String columnLabel) {
+    setState(() {
+      if (_sortColumnLabel == columnLabel) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortColumnLabel = columnLabel;
+        _sortAscending = true;
+      }
+    });
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortedStudents() {
+    final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+      widget.students,
+    );
+    final sortLabel = _sortColumnLabel;
+
+    if (sortLabel == null) {
+      return sorted;
+    }
+
+    final column = _collegeColumns.firstWhere(
+      (item) => item.label == sortLabel,
+      orElse: () => const _StudentColumn('', []),
+    );
+
+    if (column.label.isEmpty) {
+      return sorted;
+    }
+
+    sorted.sort((first, second) {
+      final firstValue = _normalizedSortValue(
+        _columnValue(first.data(), column.keys),
+      );
+      final secondValue = _normalizedSortValue(
+        _columnValue(second.data(), column.keys),
+      );
+      final comparison = firstValue.compareTo(secondValue);
+      return _sortAscending ? comparison : -comparison;
+    });
+
+    return sorted;
+  }
+
+  String _normalizedSortValue(dynamic value) {
+    if (value == null) return '';
+    if (value is Timestamp) return value.toDate().toIso8601String();
+    return value.toString().toLowerCase();
   }
 
   String _schoolId(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
@@ -453,6 +589,38 @@ class _StudentColumn {
 
   final String label;
   final List<String> keys;
+}
+
+class _SortableHeader extends StatelessWidget {
+  const _SortableHeader({
+    required this.label,
+    required this.isActive,
+    required this.ascending,
+  });
+
+  final String label;
+  final bool isActive;
+  final bool ascending;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 4),
+        Icon(
+          isActive
+              ? (ascending ? Icons.arrow_upward : Icons.arrow_downward)
+              : Icons.unfold_more,
+          size: 16,
+        ),
+      ],
+    );
+  }
 }
 
 class CollegeStudentDetailPage extends StatefulWidget {
