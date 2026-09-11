@@ -25,7 +25,11 @@ class ViewStudentsPage extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: query == null
-            ? const Center(child: Text('Student access details not found'))
+            ? Center(
+                child: Text(isCollegeRole
+                    ? 'College details not found'
+                    : 'Student access details not found'),
+              )
             : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: query.snapshots(),
                 builder: (context, snapshot) {
@@ -69,7 +73,7 @@ class ViewStudentsPage extends StatelessWidget {
         if (districtId.isEmpty) return null;
         return students.where('districtId', isEqualTo: districtId);
       case 'college':
-        final collegeId = user?.collegeId ?? '';
+        final collegeId = (user?.collegeId ?? '').trim();
         if (collegeId.isEmpty) return null;
         return students.where('collegeId', isEqualTo: collegeId);
       case 'school':

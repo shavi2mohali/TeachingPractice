@@ -17,6 +17,12 @@ class CorrectionRequestsPage extends StatefulWidget {
 class _CorrectionRequestsPageState extends State<CorrectionRequestsPage> {
   final FirestoreService _firestoreService = FirestoreService();
   final Set<String> _processingIds = <String>{};
+  late final _collegesStream = FirebaseFirestore.instance
+      .collection('colleges')
+      .snapshots();
+  String? _selectedCollegeId;
+  String? _shownCollegeId;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _requestsStream;
 
   @override
   Widget build(BuildContext context) {
@@ -26,154 +32,239 @@ class _CorrectionRequestsPageState extends State<CorrectionRequestsPage> {
         actions: const [HomeLogoutActions()],
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('correction_requests')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
+        stream: _collegesStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Unable to load correction requests: ${snapshot.error}',
-              ),
+              child: Text('Unable to load colleges: ${snapshot.error}'),
             );
           }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+          final collegeNames = <String, String>{
+            for (final doc in snapshot.data!.docs)
+              doc.id:
+                  doc.data()['name'] as String? ??
+                  doc.data()['shortName'] as String? ??
+                  doc.id,
+          };
+          final colleges = collegeNames.entries.toList()
+            ..sort((a, b) => a.value.compareTo(b.value));
+          final selectedId = collegeNames.containsKey(_selectedCollegeId)
+              ? _selectedCollegeId
+              : null;
 
-          final requests = snapshot.data?.docs ?? [];
-
-          if (requests.isEmpty) {
-            return const Center(child: Text('No correction requests found'));
-          }
-
-          return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance.collection('colleges').snapshots(),
-            builder: (context, collegesSnapshot) {
-              final collegeNames = <String, String>{
-                for (final doc in collegesSnapshot.data?.docs ?? [])
-                  doc.id: doc.data()['name'] as String? ??
-                      doc.data()['shortName'] as String? ??
-                      doc.id,
-              };
-
-              return ListView.separated(
+          return Column(
+            children: [
+              Padding(
                 padding: const EdgeInsets.all(24),
-                itemBuilder: (context, index) {
-                  final request = requests[index];
-                  final data = request.data();
-                  final requestId = data['requestId'] as String? ?? request.id;
-                  final isProcessing = _processingIds.contains(requestId);
-                  final status = (data['status'] as String? ?? 'pending').trim();
-                  final statusColor = switch (status) {
-                    'approved' => Colors.green,
-                    'rejected' => Colors.red,
-                    _ => Colors.orange,
-                  };
-                  final collegeId = data['collegeId'] as String? ?? '';
-                  final collegeName = collegeNames[collegeId] ?? collegeId;
-
-                  return Card(
-                    child: ExpansionTile(
-                      title: Text(
-                        data['registrationId'] as String? ??
-                            data['studentId'] as String? ??
-                            '',
-                      ),
-                      subtitle: Text(
-                        '${data['studentName'] as String? ?? ''}  |  $collegeName',
-                      ),
-                      trailing: Chip(
-                        label: Text(status.toUpperCase()),
-                        backgroundColor: statusColor.withOpacity(0.12),
-                        labelStyle: TextStyle(color: statusColor),
-                      ),
-                      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      children: [
-                        _InfoRow(
-                          label: 'College Name',
-                          value: collegeName,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey(selectedId),
+                        initialValue: selectedId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Select College',
+                          border: OutlineInputBorder(),
                         ),
-                        _InfoRow(
-                          label: 'Name Correction in English',
-                          value: data['nameCorrectionEnglish'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Name in Punjabi',
-                          value: data['namePunjabi'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Father Name Correction in English',
-                          value: data['fatherNameCorrectionEnglish'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Father Name in Punjabi',
-                          value: data['fatherNamePunjabi'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Mother Name Correction in English',
-                          value: data['motherNameCorrectionEnglish'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Mother Name in Punjabi',
-                          value: data['motherNamePunjabi'] as String? ?? '',
-                        ),
-                        _InfoRow(
-                          label: 'Requested On',
-                          value: _formatDateTime(data['createdAt']),
-                        ),
-                        if (data['reviewedAt'] != null)
-                          _InfoRow(
-                            label: 'Reviewed On',
-                            value: _formatDateTime(data['reviewedAt']),
-                          ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: () => _downloadCertificate(data),
-                              icon: const Icon(Icons.picture_as_pdf_outlined),
-                              label: const Text('View PDF'),
+                        items: [
+                          for (final college in colleges)
+                            DropdownMenuItem(
+                              value: college.key,
+                              child: Text(
+                                college.value,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            if (status == 'pending')
-                              FilledButton(
-                                onPressed: isProcessing
-                                    ? null
-                                    : () => _approveRequest(data),
-                                child: isProcessing
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text('Approve'),
-                              ),
-                            if (status == 'pending')
-                              OutlinedButton(
-                                onPressed: isProcessing
-                                    ? null
-                                    : () => _rejectRequest(data),
-                                child: const Text('Reject'),
-                              ),
-                          ],
-                        ),
-                      ],
+                        ],
+                        onChanged: (value) => setState(() {
+                          _selectedCollegeId = value;
+                          _shownCollegeId = null;
+                          _requestsStream = null;
+                        }),
+                      ),
                     ),
-                  );
-                },
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemCount: requests.length,
-              );
-            },
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: selectedId == null
+                          ? null
+                          : () => setState(() {
+                              _shownCollegeId = selectedId;
+                              _requestsStream = FirebaseFirestore.instance
+                                  .collection('correction_requests')
+                                  .where('collegeId', isEqualTo: selectedId)
+                                  .snapshots();
+                            }),
+                      child: const Text('Show'),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child:
+                    _requestsStream == null ||
+                        !collegeNames.containsKey(_shownCollegeId)
+                    ? const Center(
+                        child: Text(
+                          'Select a college to view correction requests',
+                        ),
+                      )
+                    : _buildRequests(collegeNames),
+              ),
+            ],
           );
         },
       ),
+    );
+  }
+
+  Widget _buildRequests(Map<String, String> collegeNames) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      key: ValueKey(_shownCollegeId),
+      stream: _requestsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Unable to load correction requests: ${snapshot.error}',
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        // Firestore filters by college; sort only that college's results here
+        // to retain newest-first ordering without requiring a composite index.
+        final requests = [...?snapshot.data?.docs]
+          ..sort((a, b) {
+            final first = a.data()['createdAt'];
+            final second = b.data()['createdAt'];
+            return (second is Timestamp ? second.millisecondsSinceEpoch : 0)
+                .compareTo(
+                  first is Timestamp ? first.millisecondsSinceEpoch : 0,
+                );
+          });
+
+        if (requests.isEmpty) {
+          return const Center(
+            child: Text('No correction requests found for this college'),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(24),
+          itemBuilder: (context, index) {
+            final request = requests[index];
+            final data = request.data();
+            final requestId = data['requestId'] as String? ?? request.id;
+            final isProcessing = _processingIds.contains(requestId);
+            final status = (data['status'] as String? ?? 'pending').trim();
+            final statusColor = switch (status) {
+              'approved' => Colors.green,
+              'rejected' => Colors.red,
+              _ => Colors.orange,
+            };
+            final collegeId = data['collegeId'] as String? ?? '';
+            final collegeName = collegeNames[collegeId] ?? collegeId;
+
+            return Card(
+              child: ExpansionTile(
+                title: Text(
+                  data['registrationId'] as String? ??
+                      data['studentId'] as String? ??
+                      '',
+                ),
+                subtitle: Text(
+                  '${data['studentName'] as String? ?? ''}  |  $collegeName',
+                ),
+                trailing: Chip(
+                  label: Text(status.toUpperCase()),
+                  backgroundColor: statusColor.withOpacity(0.12),
+                  labelStyle: TextStyle(color: statusColor),
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                children: [
+                  _InfoRow(label: 'College Name', value: collegeName),
+                  _InfoRow(
+                    label: 'Name Correction in English',
+                    value: data['nameCorrectionEnglish'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Name in Punjabi',
+                    value: data['namePunjabi'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Father Name Correction in English',
+                    value: data['fatherNameCorrectionEnglish'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Father Name in Punjabi',
+                    value: data['fatherNamePunjabi'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Mother Name Correction in English',
+                    value: data['motherNameCorrectionEnglish'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Mother Name in Punjabi',
+                    value: data['motherNamePunjabi'] as String? ?? '',
+                  ),
+                  _InfoRow(
+                    label: 'Requested On',
+                    value: _formatDateTime(data['createdAt']),
+                  ),
+                  if (data['reviewedAt'] != null)
+                    _InfoRow(
+                      label: 'Reviewed On',
+                      value: _formatDateTime(data['reviewedAt']),
+                    ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => _downloadCertificate(data),
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        label: const Text('View PDF'),
+                      ),
+                      if (status == 'pending')
+                        FilledButton(
+                          onPressed: isProcessing
+                              ? null
+                              : () => _approveRequest(data),
+                          child: isProcessing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Approve'),
+                        ),
+                      if (status == 'pending')
+                        OutlinedButton(
+                          onPressed: isProcessing
+                              ? null
+                              : () => _rejectRequest(data),
+                          child: const Text('Reject'),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemCount: requests.length,
+        );
+      },
     );
   }
 
@@ -206,8 +297,7 @@ class _CorrectionRequestsPageState extends State<CorrectionRequestsPage> {
         requestId: requestId,
         studentId: data['studentId'] as String? ?? '',
         reviewedBy: reviewerId,
-        nameCorrectionEnglish:
-            data['nameCorrectionEnglish'] as String? ?? '',
+        nameCorrectionEnglish: data['nameCorrectionEnglish'] as String? ?? '',
         namePunjabi: data['namePunjabi'] as String? ?? '',
         fatherNameCorrectionEnglish:
             data['fatherNameCorrectionEnglish'] as String? ?? '',
@@ -320,9 +410,10 @@ class _CorrectionRequestsPageState extends State<CorrectionRequestsPage> {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
     final year = date.year.toString();
-    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12)
-        .toString()
-        .padLeft(2, '0');
+    final hour = (date.hour % 12 == 0 ? 12 : date.hour % 12).toString().padLeft(
+      2,
+      '0',
+    );
     final minute = date.minute.toString().padLeft(2, '0');
     final suffix = date.hour >= 12 ? 'PM' : 'AM';
     return '$day/$month/$year $hour:$minute $suffix';
@@ -330,10 +421,7 @@ class _CorrectionRequestsPageState extends State<CorrectionRequestsPage> {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _InfoRow({required this.label, required this.value});
 
   final String label;
   final String value;
