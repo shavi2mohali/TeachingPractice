@@ -8,8 +8,20 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../../college/data/models/proposal_model.dart';
 
-class ViewStudentsPage extends StatelessWidget {
+class ViewStudentsPage extends StatefulWidget {
   const ViewStudentsPage({super.key});
+
+  @override
+  State<ViewStudentsPage> createState() => _ViewStudentsPageState();
+}
+
+class _ViewStudentsPageState extends State<ViewStudentsPage> {
+  late final _collegesStream = FirebaseFirestore.instance
+      .collection('colleges')
+      .snapshots();
+  String? _selectedCollegeId;
+  String? _shownCollegeId;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _adminStudentsStream;
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +36,15 @@ class ViewStudentsPage extends StatelessWidget {
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
-        child: query == null
+        child: user?.role.toLowerCase() == 'admin'
+            ? _buildAdminStudents(user!)
+            : query == null
             ? Center(
-                child: Text(isCollegeRole
-                    ? 'College details not found'
-                    : 'Student access details not found'),
+                child: Text(
+                  isCollegeRole
+                      ? 'College details not found'
+                      : 'Student access details not found',
+                ),
               )
             : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: query.snapshots(),
@@ -60,13 +76,127 @@ class ViewStudentsPage extends StatelessWidget {
     );
   }
 
+  Widget _buildAdminStudents(UserModel user) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _collegesStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Unable to load colleges: ${snapshot.error}'),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final collegeNames = <String, String>{
+          for (final doc in snapshot.data!.docs)
+            doc.id:
+                doc.data()['name'] as String? ??
+                doc.data()['shortName'] as String? ??
+                doc.id,
+        };
+        final colleges = collegeNames.entries.toList()
+          ..sort((a, b) => a.value.compareTo(b.value));
+        final selectedId = collegeNames.containsKey(_selectedCollegeId)
+            ? _selectedCollegeId
+            : null;
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey(selectedId),
+                    initialValue: selectedId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Select College',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final college in colleges)
+                        DropdownMenuItem(
+                          value: college.key,
+                          child: Text(
+                            college.value,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() {
+                      _selectedCollegeId = value;
+                      _shownCollegeId = null;
+                      _adminStudentsStream = null;
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: selectedId == null
+                      ? null
+                      : () => setState(() {
+                          _shownCollegeId = selectedId;
+                          _adminStudentsStream = FirebaseFirestore.instance
+                              .collection('students')
+                              .where('collegeId', isEqualTo: selectedId)
+                              .snapshots();
+                        }),
+                  child: const Text('Show'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Expanded(
+              child:
+                  _adminStudentsStream == null ||
+                      !collegeNames.containsKey(_shownCollegeId)
+                  ? const Center(
+                      child: Text('Select a college to view students'),
+                    )
+                  : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      key: ValueKey(_shownCollegeId),
+                      stream: _adminStudentsStream,
+                      builder: (context, studentsSnapshot) {
+                        if (studentsSnapshot.hasError) {
+                          return Center(
+                            child: Text(
+                              'Unable to load students: ${studentsSnapshot.error}',
+                            ),
+                          );
+                        }
+                        if (!studentsSnapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final students = studentsSnapshot.data!.docs;
+                        if (students.isEmpty) {
+                          return const Center(
+                            child: Text('No students found for this college'),
+                          );
+                        }
+                        return _StudentsTable(
+                          students: students,
+                          user: user,
+                          isCollegeRole: false,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Query<Map<String, dynamic>>? _studentsQuery(UserModel? user) {
     final students = FirebaseFirestore.instance.collection('students');
     final role = user?.role.toLowerCase();
 
     switch (role) {
       case 'admin':
-        return students;
+        // Admin queries are created only after selecting a college and Show.
+        return null;
       case 'deo':
       case 'diet':
         final districtId = user?.districtId ?? '';
@@ -232,7 +362,9 @@ class _StudentsTableState extends State<_StudentsTable> {
     return null;
   }
 
-  String _studentIdentifier(QueryDocumentSnapshot<Map<String, dynamic>> student) {
+  String _studentIdentifier(
+    QueryDocumentSnapshot<Map<String, dynamic>> student,
+  ) {
     final data = student.data();
     return data['studentId'] as String? ??
         data['registrationId'] as String? ??
@@ -297,14 +429,11 @@ class _StudentsTableState extends State<_StudentsTable> {
 }
 
 class _CollegeStudentsTable extends StatefulWidget {
-  const _CollegeStudentsTable({
-    required this.students,
-    required this.user,
-  });
+  const _CollegeStudentsTable({required this.students, required this.user});
 
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> students;
   final UserModel? user;
-  
+
   @override
   State<_CollegeStudentsTable> createState() => _CollegeStudentsTableState();
 }
@@ -349,9 +478,9 @@ class _CollegeStudentsTableState extends State<_CollegeStudentsTable> {
       stream: districtId.isEmpty
           ? null
           : FirebaseFirestore.instance
-              .collection('schools')
-              .where('districtId', isEqualTo: districtId)
-              .snapshots(),
+                .collection('schools')
+                .where('districtId', isEqualTo: districtId)
+                .snapshots(),
       builder: (context, schoolSnapshot) {
         final schoolNames = <String, String>{
           for (final doc in schoolSnapshot.data?.docs ?? [])
@@ -554,19 +683,14 @@ class _CollegeStudentsTableState extends State<_CollegeStudentsTable> {
 }
 
 class _CollegeNameHeading extends StatelessWidget {
-  const _CollegeNameHeading({
-    required this.collegeId,
-  });
+  const _CollegeNameHeading({required this.collegeId});
 
   final String collegeId;
 
   @override
   Widget build(BuildContext context) {
     if (collegeId.isEmpty) {
-      return Text(
-        'College',
-        style: Theme.of(context).textTheme.headlineSmall,
-      );
+      return Text('College', style: Theme.of(context).textTheme.headlineSmall);
     }
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -611,10 +735,7 @@ class _SortableHeader extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(width: 4),
         Icon(
           isActive
@@ -638,7 +759,8 @@ class CollegeStudentDetailPage extends StatefulWidget {
   final UserModel? user;
 
   @override
-  State<CollegeStudentDetailPage> createState() => _CollegeStudentDetailPageState();
+  State<CollegeStudentDetailPage> createState() =>
+      _CollegeStudentDetailPageState();
 }
 
 class _CollegeStudentDetailPageState extends State<CollegeStudentDetailPage> {
@@ -727,9 +849,8 @@ class _CollegeStudentDetailPageState extends State<CollegeStudentDetailPage> {
                     return const Text('No schools found for this district');
                   }
 
-                  final selectedValue = schools.any(
-                    (doc) => _schoolId(doc) == _selectedSchoolId,
-                  )
+                  final selectedValue =
+                      schools.any((doc) => _schoolId(doc) == _selectedSchoolId)
                       ? _selectedSchoolId
                       : null;
 
@@ -743,7 +864,9 @@ class _CollegeStudentDetailPageState extends State<CollegeStudentDetailPage> {
                         .map(
                           (doc) => DropdownMenuItem<String>(
                             value: _schoolId(doc),
-                            child: Text(doc.data()['name'] as String? ?? doc.id),
+                            child: Text(
+                              doc.data()['name'] as String? ?? doc.id,
+                            ),
                           ),
                         )
                         .toList(),
@@ -802,9 +925,9 @@ class _CollegeStudentDetailPageState extends State<CollegeStudentDetailPage> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Proposal sent to DEO')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Proposal sent to DEO')));
       Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
@@ -819,7 +942,9 @@ class _CollegeStudentDetailPageState extends State<CollegeStudentDetailPage> {
     }
   }
 
-  String _studentIdentifier(QueryDocumentSnapshot<Map<String, dynamic>> student) {
+  String _studentIdentifier(
+    QueryDocumentSnapshot<Map<String, dynamic>> student,
+  ) {
     final data = student.data();
     return data['studentId'] as String? ??
         data['registrationId'] as String? ??
