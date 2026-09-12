@@ -47,6 +47,7 @@ class ExamEligibilitySubmission {
   final DateTime? reviewedAt;
   final String? dietRemarks;
   final bool? eligible;
+  final List<Map<String, dynamic>> reviewHistory;
   final DateTime updatedAt;
 
   ExamEligibilitySubmission({
@@ -70,6 +71,7 @@ class ExamEligibilitySubmission {
     this.reviewedAt,
     this.dietRemarks,
     this.eligible,
+    this.reviewHistory = const [],
     required this.updatedAt,
   }) : attendancePercentage = calculateAttendancePercentage(
          attendedWorkingDays,
@@ -101,6 +103,7 @@ class ExamEligibilitySubmission {
       reviewedAt: _nullableDateTimeFromValue(map['reviewedAt']),
       dietRemarks: map['dietRemarks'] as String?,
       eligible: map['eligible'] as bool?,
+      reviewHistory: _reviewHistoryFromValue(map['reviewHistory']),
       updatedAt: _dateTimeFromValue(map['updatedAt']),
     );
   }
@@ -129,8 +132,23 @@ class ExamEligibilitySubmission {
       'reviewedAt': reviewedAt == null ? null : Timestamp.fromDate(reviewedAt!),
       'dietRemarks': dietRemarks,
       'eligible': eligible,
+      'reviewHistory': reviewHistory,
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
+  }
+
+  String? get latestDietRemarks {
+    final activeRemarks = dietRemarks?.trim();
+    if (activeRemarks != null && activeRemarks.isNotEmpty) {
+      return activeRemarks;
+    }
+    for (final review in reviewHistory.reversed) {
+      final remarks = review['dietRemarks'];
+      if (remarks is String && remarks.trim().isNotEmpty) {
+        return remarks.trim();
+      }
+    }
+    return null;
   }
 
   static String documentIdForStudent(String studentId) {
@@ -156,5 +174,13 @@ class ExamEligibilitySubmission {
   static DateTime? _nullableDateTimeFromValue(dynamic value) {
     if (value == null) return null;
     return _dateTimeFromValue(value);
+  }
+
+  static List<Map<String, dynamic>> _reviewHistoryFromValue(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 }

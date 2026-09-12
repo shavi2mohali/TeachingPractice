@@ -9,6 +9,7 @@ import '../../../admin/data/services/file_download_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../data/models/exam_eligibility_submission.dart';
+import '../widgets/two_axis_data_table_view.dart';
 
 class DietExamEligibilityReviewPage extends StatefulWidget {
   const DietExamEligibilityReviewPage({super.key});
@@ -195,35 +196,32 @@ class _DietExamEligibilityReviewPageState
           );
         }
 
-        return Scrollbar(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('Registration ID')),
-                  DataColumn(label: Text('Student Name')),
-                  DataColumn(label: Text('College')),
-                  DataColumn(label: Text('Total Working Days')),
-                  DataColumn(label: Text('Attended Working Days')),
-                  DataColumn(label: Text('Attendance %')),
-                  DataColumn(label: Text('TP Certificate')),
-                  DataColumn(label: Text('College Remarks')),
-                  DataColumn(label: Text('Current Status')),
-                  DataColumn(label: Text('Review Action')),
-                ],
-                rows: submissions
-                    .map(
-                      (submission) => _buildSubmissionRow(
-                        submission,
-                        collegeNames[submission.collegeId] ??
-                            submission.collegeId,
-                        reviewerUid,
-                      ),
-                    )
-                    .toList(),
-              ),
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: TwoAxisDataTableView(
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('Registration ID')),
+                DataColumn(label: Text('Student Name')),
+                DataColumn(label: Text('College')),
+                DataColumn(label: Text('Total Working Days')),
+                DataColumn(label: Text('Attended Working Days')),
+                DataColumn(label: Text('Attendance %')),
+                DataColumn(label: Text('TP Certificate')),
+                DataColumn(label: Text('College Remarks')),
+                DataColumn(label: Text('Current Status')),
+                DataColumn(label: Text('Review Action')),
+              ],
+              rows: submissions
+                  .map(
+                    (submission) => _buildSubmissionRow(
+                      submission,
+                      collegeNames[submission.collegeId] ??
+                          submission.collegeId,
+                      reviewerUid,
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         );

@@ -11,6 +11,7 @@ import '../../../auth/data/models/user_model.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
 import '../../data/models/exam_eligibility_submission.dart';
+import '../widgets/two_axis_data_table_view.dart';
 
 class CollegeExamEligibilityPage extends StatefulWidget {
   const CollegeExamEligibilityPage({super.key});
@@ -26,6 +27,7 @@ class _CollegeExamEligibilityPageState
 
   final FirestoreService _firestoreService = FirestoreService();
   final Map<String, TextEditingController> _attendedDaysControllers = {};
+  final Map<String, TextEditingController> _collegeRemarksControllers = {};
   final Set<String> _initializedStudents = {};
   final Map<String, Uint8List> _certificateBytes = {};
   final Map<String, String> _certificateNames = {};
@@ -55,6 +57,9 @@ class _CollegeExamEligibilityPageState
   @override
   void dispose() {
     for (final controller in _attendedDaysControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _collegeRemarksControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -128,39 +133,31 @@ class _CollegeExamEligibilityPageState
                           ),
                           const SizedBox(height: 16),
                           Expanded(
-                            child: Scrollbar(
-                              child: SingleChildScrollView(
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: DataTable(
-                                    columns: const [
-                                      DataColumn(
-                                        label: Text('Registration ID'),
-                                      ),
-                                      DataColumn(label: Text('Student Name')),
-                                      DataColumn(
-                                        label: Text('Total Working Days'),
-                                      ),
-                                      DataColumn(
-                                        label: Text('Attended Working Days'),
-                                      ),
-                                      DataColumn(label: Text('Attendance %')),
-                                      DataColumn(label: Text('TP Certificate')),
-                                      DataColumn(label: Text('Status')),
-                                      DataColumn(label: Text('Action')),
-                                    ],
-                                    rows: students.map((student) {
-                                      final existing =
-                                          submissionsByStudent[student
-                                              .studentId];
-                                      return _buildStudentRow(
-                                        student: student,
-                                        existing: existing,
-                                        user: user!,
-                                      );
-                                    }).toList(),
+                            child: TwoAxisDataTableView(
+                              child: DataTable(
+                                columns: const [
+                                  DataColumn(label: Text('Registration ID')),
+                                  DataColumn(label: Text('Student Name')),
+                                  DataColumn(label: Text('Total Working Days')),
+                                  DataColumn(
+                                    label: Text('Attended Working Days'),
                                   ),
-                                ),
+                                  DataColumn(label: Text('Attendance %')),
+                                  DataColumn(label: Text('TP Certificate')),
+                                  DataColumn(label: Text('College Remarks')),
+                                  DataColumn(label: Text('DIET Remarks')),
+                                  DataColumn(label: Text('Status')),
+                                  DataColumn(label: Text('Action')),
+                                ],
+                                rows: students.map((student) {
+                                  final existing =
+                                      submissionsByStudent[student.studentId];
+                                  return _buildStudentRow(
+                                    student: student,
+                                    existing: existing,
+                                    user: user!,
+                                  );
+                                }).toList(),
                               ),
                             ),
                           ),
@@ -179,8 +176,11 @@ class _CollegeExamEligibilityPageState
     required ExamEligibilitySubmission? existing,
     required UserModel user,
   }) {
-    final controller = _controllerFor(student.studentId, existing);
-    final attendedDays = int.tryParse(controller.text);
+    _initializeControllers(student.studentId, existing);
+    final attendedDaysController = _attendedDaysControllers[student.studentId]!;
+    final collegeRemarksController =
+        _collegeRemarksControllers[student.studentId]!;
+    final attendedDays = int.tryParse(attendedDaysController.text);
     final percentage = attendedDays == null
         ? null
         : ExamEligibilitySubmission.calculateAttendancePercentage(attendedDays);
@@ -206,7 +206,7 @@ class _CollegeExamEligibilityPageState
           SizedBox(
             width: 110,
             child: TextField(
-              controller: controller,
+              controller: attendedDaysController,
               enabled: canSubmit && !isSubmitting,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -272,6 +272,22 @@ class _CollegeExamEligibilityPageState
             ),
           ),
         ),
+        DataCell(
+          SizedBox(
+            width: 180,
+            child: TextField(
+              controller: collegeRemarksController,
+              enabled: canSubmit && !isSubmitting,
+              decoration: const InputDecoration(
+                hintText: 'Remarks (optional)',
+                isDense: true,
+              ),
+            ),
+          ),
+        ),
+        DataCell(
+          SizedBox(width: 200, child: Text(existing?.latestDietRemarks ?? '—')),
+        ),
         DataCell(Text(_statusLabel(existing?.status))),
         DataCell(
           FilledButton(
@@ -284,25 +300,33 @@ class _CollegeExamEligibilityPageState
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Submit to DIET'),
+                : Text(
+                    existing?.status == ExamEligibilityStatus.needsCorrection
+                        ? 'Resubmit to DIET'
+                        : 'Submit to DIET',
+                  ),
           ),
         ),
       ],
     );
   }
 
-  TextEditingController _controllerFor(
+  void _initializeControllers(
     String studentId,
     ExamEligibilitySubmission? existing,
   ) {
-    final controller = _attendedDaysControllers.putIfAbsent(
+    final attendedDaysController = _attendedDaysControllers.putIfAbsent(
+      studentId,
+      TextEditingController.new,
+    );
+    final collegeRemarksController = _collegeRemarksControllers.putIfAbsent(
       studentId,
       TextEditingController.new,
     );
     if (_initializedStudents.add(studentId) && existing != null) {
-      controller.text = existing.attendedWorkingDays.toString();
+      attendedDaysController.text = existing.attendedWorkingDays.toString();
+      collegeRemarksController.text = existing.collegeRemarks;
     }
-    return controller;
   }
 
   Future<void> _pickCertificate(String studentId) async {
@@ -384,7 +408,8 @@ class _CollegeExamEligibilityPageState
           tpCertificateFileName: certificateName.trim(),
           tpCertificateMimeType: 'application/pdf',
           tpCertificatePdf: certificateBytes,
-          collegeRemarks: existing?.collegeRemarks ?? '',
+          collegeRemarks:
+              _collegeRemarksControllers[student.studentId]?.text.trim() ?? '',
           status: ExamEligibilityStatus.submittedToDiet,
           submittedBy: user.uid,
           submittedAt: now,

@@ -64,7 +64,8 @@ class FirestoreService {
 
     await _firestore.runTransaction((transaction) async {
       final existing = await transaction.get(reference);
-      final existingStatus = existing.data()?['status'];
+      final existingData = existing.data();
+      final existingStatus = existingData?['status'];
       if (existing.exists &&
           existingStatus != ExamEligibilityStatus.needsCorrection) {
         throw StateError(
@@ -72,8 +73,36 @@ class FirestoreService {
         );
       }
 
+      final submissionData = submission.toMap();
+      final existingHistory = existingData?['reviewHistory'];
+      final reviewHistory = existingHistory is List
+          ? List<Object?>.from(existingHistory)
+          : <Object?>[];
+      if (existingData != null) {
+        reviewHistory.add({
+          'status': existingData['status'],
+          'eligible': existingData['eligible'],
+          'reviewedBy': existingData['reviewedBy'],
+          'reviewedAt': existingData['reviewedAt'],
+          'dietRemarks': existingData['dietRemarks'],
+        });
+        for (final field in const [
+          'submissionId',
+          'examCycle',
+          'studentId',
+          'registrationId',
+          'studentName',
+          'collegeId',
+          'districtId',
+          'dietId',
+          'totalWorkingDays',
+        ]) {
+          submissionData[field] = existingData[field];
+        }
+      }
+
       transaction.set(reference, {
-        ...submission.toMap(),
+        ...submissionData,
         'submissionId': submissionId,
         'examCycle': ExamEligibilitySubmission.examCycle,
         'totalWorkingDays': ExamEligibilitySubmission.requiredWorkingDays,
@@ -84,6 +113,7 @@ class FirestoreService {
         'reviewedAt': null,
         'dietRemarks': null,
         'eligible': null,
+        'reviewHistory': reviewHistory,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     });
@@ -145,6 +175,36 @@ class FirestoreService {
         .where('collegeId', isEqualTo: normalizedCollegeId)
         .snapshots()
         .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Stream<List<ExamEligibilitySubmission>>
+  streamExamEligibilitySubmissionsForAdmin({
+    required String districtId,
+    required String collegeId,
+    String? status,
+  }) {
+    final normalizedDistrictId = districtId.trim();
+    final normalizedCollegeId = collegeId.trim();
+    final normalizedStatus = status?.trim();
+    if (normalizedDistrictId.isEmpty || normalizedCollegeId.isEmpty) {
+      throw ArgumentError('District and college are required');
+    }
+    if (normalizedStatus != null &&
+        normalizedStatus.isNotEmpty &&
+        !ExamEligibilityStatus.values.contains(normalizedStatus)) {
+      throw ArgumentError.value(status, 'status', 'Invalid eligibility status');
+    }
+
+    Query<Map<String, dynamic>> query = _examEligibilitySubmissions
+        .where('districtId', isEqualTo: normalizedDistrictId)
+        .where('collegeId', isEqualTo: normalizedCollegeId);
+    if (normalizedStatus != null && normalizedStatus.isNotEmpty) {
+      query = query.where('status', isEqualTo: normalizedStatus);
+    }
+
+    return query.snapshots().map(
+      (snapshot) => _mapExamEligibilitySubmissions(snapshot.docs),
+    );
   }
 
   Future<List<ExamEligibilitySubmission>> getExamEligibilitySubmissionsByDiet(
@@ -237,6 +297,28 @@ class FirestoreService {
         )
         .snapshots()
         .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Stream<List<ExamEligibilitySubmission>> streamEligibleExamReport({
+    String? districtId,
+    String? collegeId,
+  }) {
+    Query<Map<String, dynamic>> query = _examEligibilitySubmissions.where(
+      'status',
+      isEqualTo: ExamEligibilityStatus.eligible,
+    );
+    final normalizedDistrictId = districtId?.trim();
+    final normalizedCollegeId = collegeId?.trim();
+    if (normalizedDistrictId != null && normalizedDistrictId.isNotEmpty) {
+      query = query.where('districtId', isEqualTo: normalizedDistrictId);
+    }
+    if (normalizedCollegeId != null && normalizedCollegeId.isNotEmpty) {
+      query = query.where('collegeId', isEqualTo: normalizedCollegeId);
+    }
+
+    return query.snapshots().map(
+      (snapshot) => _mapExamEligibilitySubmissions(snapshot.docs),
+    );
   }
 
   Query<Map<String, dynamic>> _examEligibilityDistrictQuery(

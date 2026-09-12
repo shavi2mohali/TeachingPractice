@@ -33,6 +33,15 @@ service cloud.firestore {
     function changedOnly(fields) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
+    function eligibilityReviewAudit(data) {
+      return {
+        'status': data.status,
+        'eligible': data.eligible,
+        'reviewedBy': data.reviewedBy,
+        'reviewedAt': data.reviewedAt,
+        'dietRemarks': data.dietRemarks
+      };
+    }
     function validExamEligibilitySubmission(data, submissionId) {
       let studentPath = /databases/$(database)/documents/students/$(data.studentId);
       return data.keys().hasOnly(['submissionId', 'examCycle', 'studentId',
@@ -40,7 +49,7 @@ service cloud.firestore {
           'totalWorkingDays', 'attendedWorkingDays', 'attendancePercentage',
           'tpCertificateFileName', 'tpCertificateMimeType', 'tpCertificatePdf',
           'collegeRemarks', 'status', 'submittedBy', 'submittedAt', 'reviewedBy',
-          'reviewedAt', 'dietRemarks', 'eligible', 'updatedAt'])
+          'reviewedAt', 'dietRemarks', 'eligible', 'reviewHistory', 'updatedAt'])
         && data.submissionId == submissionId
         && submissionId == 'october_2026_' + data.studentId
         && data.examCycle == 'october_2026'
@@ -62,6 +71,7 @@ service cloud.firestore {
         && data.updatedAt == request.time
         && data.reviewedBy == null && data.reviewedAt == null
         && data.dietRemarks == null && data.eligible == null
+        && data.get('reviewHistory', []) is list
         && exists(studentPath)
         && college(get(studentPath).data)
         && get(studentPath).data.collegeId == data.collegeId
@@ -140,12 +150,21 @@ service cloud.firestore {
       allow read: if admin() || college(resource.data)
         || (role('diet') && district(resource.data));
       allow create: if college(request.resource.data)
+        && request.resource.data.get('reviewHistory', []).size() == 0
         && validExamEligibilitySubmission(request.resource.data, submissionId);
       allow update: if college(resource.data)
         && resource.data.status == 'needs_correction'
+        && changedOnly(['attendedWorkingDays', 'attendancePercentage',
+          'tpCertificateFileName', 'tpCertificateMimeType', 'tpCertificatePdf',
+          'collegeRemarks', 'status', 'submittedBy', 'submittedAt', 'reviewedBy',
+          'reviewedAt', 'dietRemarks', 'eligible', 'reviewHistory', 'updatedAt'])
         && request.resource.data.studentId == resource.data.studentId
         && request.resource.data.collegeId == resource.data.collegeId
         && request.resource.data.districtId == resource.data.districtId
+        && request.resource.data.reviewHistory
+          == resource.data.get('reviewHistory', []).concat([
+            eligibilityReviewAudit(resource.data)
+          ])
         && validExamEligibilitySubmission(request.resource.data, submissionId);
       allow update: if role('diet') && district(resource.data)
         && resource.data.status == 'submitted_to_diet'

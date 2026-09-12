@@ -5,6 +5,8 @@ import '../../../../admin/pending_registrations_screen.dart';
 import '../../../../admin_web/features/schools/presentation/pages/school_excel_upload_page.dart';
 import '../../../../admin_web/features/students/presentation/pages/student_excel_upload_page.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
+import '../../../exam_eligibility/presentation/pages/admin_eligible_roll_number_report_page.dart';
+import '../../../exam_eligibility/presentation/pages/admin_exam_roll_number_eligibility_page.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
 import 'correction_requests_page.dart';
 import 'student_status_overview_page.dart';
@@ -86,6 +88,22 @@ class AdminDashboard extends StatelessWidget {
                         onTap: () => _openPage(
                           context,
                           const CorrectionRequestsPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Exam Roll Number Eligibility',
+                        icon: Icons.assignment_turned_in_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const AdminExamRollNumberEligibilityPage(),
+                        ),
+                      ),
+                      _AdminHomeCard(
+                        title: 'Eligible for Roll Number - October 2026',
+                        icon: Icons.table_view_outlined,
+                        onTap: () => _openPage(
+                          context,
+                          const AdminEligibleRollNumberReportPage(),
                         ),
                       ),
                       _AdminHomeCard(
