@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../../features/admin/data/models/school_model.dart';
 import '../../features/admin/data/models/student_model.dart';
 import '../../features/college/data/models/proposal_model.dart';
+import '../../features/exam_eligibility/data/models/exam_eligibility_submission.dart';
 import '../../features/school/data/models/attendance_model.dart';
 import '../../features/school/data/models/certificate_model.dart';
 
@@ -45,11 +46,268 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _correctionRequests =>
       _firestore.collection('correction_requests');
 
+  CollectionReference<Map<String, dynamic>> get _examEligibilitySubmissions =>
+      _firestore.collection('exam_eligibility_submissions');
+
+  Future<String> submitExamEligibilityRecord(
+    ExamEligibilitySubmission submission,
+  ) async {
+    _validateExamEligibilitySubmission(submission);
+    final submissionId = ExamEligibilitySubmission.documentIdForStudent(
+      submission.studentId,
+    );
+    final attendancePercentage =
+        ExamEligibilitySubmission.calculateAttendancePercentage(
+          submission.attendedWorkingDays,
+        );
+    final reference = _examEligibilitySubmissions.doc(submissionId);
+
+    await _firestore.runTransaction((transaction) async {
+      final existing = await transaction.get(reference);
+      final existingStatus = existing.data()?['status'];
+      if (existing.exists &&
+          existingStatus != ExamEligibilityStatus.needsCorrection) {
+        throw StateError(
+          'An exam eligibility submission already exists for this student',
+        );
+      }
+
+      transaction.set(reference, {
+        ...submission.toMap(),
+        'submissionId': submissionId,
+        'examCycle': ExamEligibilitySubmission.examCycle,
+        'totalWorkingDays': ExamEligibilitySubmission.requiredWorkingDays,
+        'attendancePercentage': attendancePercentage,
+        'status': ExamEligibilityStatus.submittedToDiet,
+        'submittedAt': FieldValue.serverTimestamp(),
+        'reviewedBy': null,
+        'reviewedAt': null,
+        'dietRemarks': null,
+        'eligible': null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
+
+    return submissionId;
+  }
+
+  Future<List<ExamEligibilitySubmission>>
+  getExamEligibilitySubmissionsByCollege(String collegeId) async {
+    final snapshot = await _examEligibilitySubmissions
+        .where('collegeId', isEqualTo: collegeId.trim())
+        .get();
+    return _mapExamEligibilitySubmissions(snapshot.docs);
+  }
+
+  Stream<List<ExamEligibilitySubmission>>
+  streamExamEligibilitySubmissionsByCollege(String collegeId) {
+    return _examEligibilitySubmissions
+        .where('collegeId', isEqualTo: collegeId.trim())
+        .snapshots()
+        .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Future<List<ExamEligibilitySubmission>>
+  getExamEligibilitySubmissionsByDistrict(
+    String districtId, {
+    String? dietId,
+  }) async {
+    final snapshot = await _examEligibilityDistrictQuery(
+      districtId,
+      dietId: dietId,
+    ).get();
+    return _mapExamEligibilitySubmissions(snapshot.docs);
+  }
+
+  Stream<List<ExamEligibilitySubmission>>
+  streamExamEligibilitySubmissionsByDistrict(
+    String districtId, {
+    String? dietId,
+  }) {
+    return _examEligibilityDistrictQuery(districtId, dietId: dietId)
+        .snapshots()
+        .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Future<List<ExamEligibilitySubmission>> getExamEligibilitySubmissionsByDiet(
+    String dietId,
+  ) async {
+    final snapshot = await _examEligibilitySubmissions
+        .where('dietId', isEqualTo: dietId.trim())
+        .get();
+    return _mapExamEligibilitySubmissions(snapshot.docs);
+  }
+
+  Stream<List<ExamEligibilitySubmission>>
+  streamExamEligibilitySubmissionsByDiet(String dietId) {
+    return _examEligibilitySubmissions
+        .where('dietId', isEqualTo: dietId.trim())
+        .snapshots()
+        .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Future<void> reviewExamEligibilitySubmission({
+    required String submissionId,
+    required String status,
+    required String reviewedBy,
+    String? dietRemarks,
+  }) async {
+    const reviewStatuses = {
+      ExamEligibilityStatus.needsCorrection,
+      ExamEligibilityStatus.eligible,
+      ExamEligibilityStatus.notEligible,
+    };
+    if (!reviewStatuses.contains(status)) {
+      throw ArgumentError.value(status, 'status', 'Invalid DIET review status');
+    }
+    if (submissionId.trim().isEmpty || reviewedBy.trim().isEmpty) {
+      throw ArgumentError('Submission and reviewer are required');
+    }
+
+    final reference = _examEligibilitySubmissions.doc(submissionId.trim());
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(reference);
+      final data = snapshot.data();
+      if (!snapshot.exists || data == null) {
+        throw StateError('Exam eligibility submission not found');
+      }
+      final attendedWorkingDays = data['attendedWorkingDays'];
+      if (attendedWorkingDays is! num) {
+        throw StateError('Attended working days are missing');
+      }
+      final meetsThreshold =
+          attendedWorkingDays.toInt() >=
+          ExamEligibilitySubmission.minimumAttendedWorkingDays;
+      if (status == ExamEligibilityStatus.eligible && !meetsThreshold) {
+        throw StateError('Student does not meet the 75% attendance threshold');
+      }
+      if (status == ExamEligibilityStatus.notEligible && meetsThreshold) {
+        throw StateError('Student meets the 75% attendance threshold');
+      }
+
+      final now = Timestamp.now();
+      transaction.update(reference, {
+        'status': status,
+        'reviewedBy': reviewedBy.trim(),
+        'reviewedAt': now,
+        'dietRemarks': dietRemarks?.trim(),
+        'eligible': switch (status) {
+          ExamEligibilityStatus.eligible => true,
+          ExamEligibilityStatus.notEligible => false,
+          _ => null,
+        },
+        'updatedAt': now,
+      });
+    });
+  }
+
+  Stream<List<ExamEligibilitySubmission>>
+  streamAllFinalExamEligibilityDecisions() {
+    return _examEligibilitySubmissions
+        .where(
+          'status',
+          whereIn: [
+            ExamEligibilityStatus.eligible,
+            ExamEligibilityStatus.notEligible,
+          ],
+        )
+        .snapshots()
+        .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
+  Query<Map<String, dynamic>> _examEligibilityDistrictQuery(
+    String districtId, {
+    String? dietId,
+  }) {
+    final normalizedDistrictId = districtId.trim();
+    if (normalizedDistrictId.isEmpty) {
+      throw ArgumentError.value(
+        districtId,
+        'districtId',
+        'District is required',
+      );
+    }
+    Query<Map<String, dynamic>> query = _examEligibilitySubmissions.where(
+      'districtId',
+      isEqualTo: normalizedDistrictId,
+    );
+    final normalizedDietId = dietId?.trim();
+    if (normalizedDietId != null && normalizedDietId.isNotEmpty) {
+      query = query.where('dietId', isEqualTo: normalizedDietId);
+    }
+    return query;
+  }
+
+  List<ExamEligibilitySubmission> _mapExamEligibilitySubmissions(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+  ) {
+    final submissions = documents
+        .map(
+          (document) => ExamEligibilitySubmission.fromMap({
+            ...document.data(),
+            'submissionId': document.id,
+          }),
+        )
+        .toList();
+    submissions.sort(
+      (first, second) => second.updatedAt.compareTo(first.updatedAt),
+    );
+    return submissions;
+  }
+
+  void _validateExamEligibilitySubmission(
+    ExamEligibilitySubmission submission,
+  ) {
+    if (submission.studentId.trim().isEmpty ||
+        submission.studentId.contains('/')) {
+      throw ArgumentError.value(
+        submission.studentId,
+        'studentId',
+        'A valid student document ID is required',
+      );
+    }
+    if (submission.registrationId.trim().isEmpty ||
+        submission.studentName.trim().isEmpty ||
+        submission.collegeId.trim().isEmpty ||
+        submission.districtId.trim().isEmpty ||
+        submission.submittedBy.trim().isEmpty) {
+      throw ArgumentError(
+        'Student, college, district and submitter are required',
+      );
+    }
+    if (submission.totalWorkingDays !=
+        ExamEligibilitySubmission.requiredWorkingDays) {
+      throw ArgumentError.value(
+        submission.totalWorkingDays,
+        'totalWorkingDays',
+        'Total working days must be 200',
+      );
+    }
+    if (submission.attendedWorkingDays < 0 ||
+        submission.attendedWorkingDays >
+            ExamEligibilitySubmission.requiredWorkingDays) {
+      throw RangeError.range(
+        submission.attendedWorkingDays,
+        0,
+        ExamEligibilitySubmission.requiredWorkingDays,
+        'attendedWorkingDays',
+      );
+    }
+    if (submission.tpCertificatePdf.isEmpty ||
+        submission.tpCertificatePdf.length > 900 * 1024 ||
+        submission.tpCertificateFileName.trim().isEmpty ||
+        submission.tpCertificateMimeType.trim().isEmpty) {
+      throw ArgumentError('TP certificate attachment is required');
+    }
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> streamCollegeCorrectionStudents(
     String collegeId,
   ) {
     // Rules require the canonical users/{uid}.collegeId, never directory aliases.
-    return _students.where('collegeId', isEqualTo: collegeId.trim()).snapshots();
+    return _students
+        .where('collegeId', isEqualTo: collegeId.trim())
+        .snapshots();
   }
 
   Stream<List<PendingRegistration>> streamPendingRegistrations() {
@@ -170,6 +428,24 @@ class FirestoreService {
               )
               .toList(),
         );
+  }
+
+  Stream<List<StudentModel>> streamExamEligibilityStudentsByCollege(
+    String collegeId,
+  ) {
+    return _students
+        .where('collegeId', isEqualTo: collegeId.trim())
+        .snapshots()
+        .map((snapshot) {
+          final students = snapshot.docs
+              .map(
+                (doc) =>
+                    StudentModel.fromMap({...doc.data(), 'studentId': doc.id}),
+              )
+              .toList();
+          students.sort((first, second) => first.name.compareTo(second.name));
+          return students;
+        });
   }
 
   Stream<List<StudentModel>> streamStudents() {

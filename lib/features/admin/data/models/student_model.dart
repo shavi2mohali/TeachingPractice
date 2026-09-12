@@ -43,7 +43,10 @@ class StudentModel {
     return StudentModel(
       studentId: map['studentId'] as String? ?? '',
       name: map['name'] as String? ?? '',
-      registrationNumber: map['registrationNumber'] as String? ?? '',
+      registrationNumber:
+          map['registrationNumber'] as String? ??
+          map['registrationId'] as String? ??
+          '',
       rollNumber: map['rollNumber'] as String? ?? '',
       gender: map['gender'] as String? ?? '',
       dateOfBirth: _nullableDateTimeFromValue(map['dateOfBirth']),

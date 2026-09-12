@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
+import '../../../exam_eligibility/presentation/pages/college_exam_eligibility_page.dart';
 import 'college_corrections_page.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
 
@@ -53,6 +54,17 @@ class CollegeDashboard extends StatelessWidget {
                       );
                     },
                     child: const Text('Submit Corrections'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              const CollegeExamEligibilityPage(),
+                        ),
+                      );
+                    },
+                    child: const Text('Exam Eligibility'),
                   ),
                 ],
               ),

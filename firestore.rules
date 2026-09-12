@@ -33,6 +33,40 @@ service cloud.firestore {
     function changedOnly(fields) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
+    function validExamEligibilitySubmission(data, submissionId) {
+      let studentPath = /databases/$(database)/documents/students/$(data.studentId);
+      return data.keys().hasOnly(['submissionId', 'examCycle', 'studentId',
+          'registrationId', 'studentName', 'collegeId', 'districtId', 'dietId',
+          'totalWorkingDays', 'attendedWorkingDays', 'attendancePercentage',
+          'tpCertificateFileName', 'tpCertificateMimeType', 'tpCertificatePdf',
+          'collegeRemarks', 'status', 'submittedBy', 'submittedAt', 'reviewedBy',
+          'reviewedAt', 'dietRemarks', 'eligible', 'updatedAt'])
+        && data.submissionId == submissionId
+        && submissionId == 'october_2026_' + data.studentId
+        && data.examCycle == 'october_2026'
+        && data.studentId is string && data.studentId != ''
+        && data.registrationId is string && data.registrationId != ''
+        && data.studentName is string && data.studentName != ''
+        && data.totalWorkingDays == 200
+        && data.attendedWorkingDays is int
+        && data.attendedWorkingDays >= 0 && data.attendedWorkingDays <= 200
+        && data.attendancePercentage is number
+        && data.attendancePercentage * 2 == data.attendedWorkingDays
+        && data.tpCertificateFileName is string && data.tpCertificateFileName != ''
+        && data.tpCertificateMimeType == 'application/pdf'
+        && data.tpCertificatePdf is bytes
+        && data.collegeRemarks is string
+        && data.status == 'submitted_to_diet'
+        && data.submittedBy == request.auth.uid
+        && data.submittedAt == request.time
+        && data.updatedAt == request.time
+        && data.reviewedBy == null && data.reviewedAt == null
+        && data.dietRemarks == null && data.eligible == null
+        && exists(studentPath)
+        && college(get(studentPath).data)
+        && get(studentPath).data.collegeId == data.collegeId
+        && get(studentPath).data.districtId == data.districtId;
+    }
     function correctionSubmission(studentId) {
       let next = request.resource.data;
       let path = /databases/$(database)/documents/correction_requests/$(next.correctionRequestId);
@@ -100,6 +134,18 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/students/$(request.resource.data.studentId))
         && college(get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data);
       // No college update/delete permission, including approve/reject.
+    }
+
+    match /exam_eligibility_submissions/{submissionId} {
+      allow read: if admin() || college(resource.data);
+      allow create: if college(request.resource.data)
+        && validExamEligibilitySubmission(request.resource.data, submissionId);
+      allow update: if college(resource.data)
+        && resource.data.status == 'needs_correction'
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.collegeId == resource.data.collegeId
+        && request.resource.data.districtId == resource.data.districtId
+        && validExamEligibilitySubmission(request.resource.data, submissionId);
     }
 
     // Directory lookups are used before authentication by registration dropdowns.
