@@ -129,6 +129,24 @@ class FirestoreService {
         .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
   }
 
+  Stream<List<ExamEligibilitySubmission>>
+  streamExamEligibilitySubmissionsForDietReview({
+    required String districtId,
+    required String collegeId,
+  }) {
+    final normalizedDistrictId = districtId.trim();
+    final normalizedCollegeId = collegeId.trim();
+    if (normalizedDistrictId.isEmpty || normalizedCollegeId.isEmpty) {
+      throw ArgumentError('District and college are required');
+    }
+
+    return _examEligibilitySubmissions
+        .where('districtId', isEqualTo: normalizedDistrictId)
+        .where('collegeId', isEqualTo: normalizedCollegeId)
+        .snapshots()
+        .map((snapshot) => _mapExamEligibilitySubmissions(snapshot.docs));
+  }
+
   Future<List<ExamEligibilitySubmission>> getExamEligibilitySubmissionsByDiet(
     String dietId,
   ) async {
@@ -163,6 +181,10 @@ class FirestoreService {
     if (submissionId.trim().isEmpty || reviewedBy.trim().isEmpty) {
       throw ArgumentError('Submission and reviewer are required');
     }
+    final normalizedRemarks = dietRemarks?.trim() ?? '';
+    if (status != ExamEligibilityStatus.eligible && normalizedRemarks.isEmpty) {
+      throw ArgumentError('DIET remarks are required for this review decision');
+    }
 
     final reference = _examEligibilitySubmissions.doc(submissionId.trim());
     await _firestore.runTransaction((transaction) async {
@@ -170,6 +192,9 @@ class FirestoreService {
       final data = snapshot.data();
       if (!snapshot.exists || data == null) {
         throw StateError('Exam eligibility submission not found');
+      }
+      if (data['status'] != ExamEligibilityStatus.submittedToDiet) {
+        throw StateError('This submission is not awaiting DIET review');
       }
       final attendedWorkingDays = data['attendedWorkingDays'];
       if (attendedWorkingDays is! num) {
@@ -185,18 +210,17 @@ class FirestoreService {
         throw StateError('Student meets the 75% attendance threshold');
       }
 
-      final now = Timestamp.now();
       transaction.update(reference, {
         'status': status,
         'reviewedBy': reviewedBy.trim(),
-        'reviewedAt': now,
-        'dietRemarks': dietRemarks?.trim(),
+        'reviewedAt': FieldValue.serverTimestamp(),
+        'dietRemarks': normalizedRemarks.isEmpty ? null : normalizedRemarks,
         'eligible': switch (status) {
           ExamEligibilityStatus.eligible => true,
           ExamEligibilityStatus.notEligible => false,
           _ => null,
         },
-        'updatedAt': now,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     });
   }

@@ -137,7 +137,8 @@ service cloud.firestore {
     }
 
     match /exam_eligibility_submissions/{submissionId} {
-      allow read: if admin() || college(resource.data);
+      allow read: if admin() || college(resource.data)
+        || (role('diet') && district(resource.data));
       allow create: if college(request.resource.data)
         && validExamEligibilitySubmission(request.resource.data, submissionId);
       allow update: if college(resource.data)
@@ -146,6 +147,29 @@ service cloud.firestore {
         && request.resource.data.collegeId == resource.data.collegeId
         && request.resource.data.districtId == resource.data.districtId
         && validExamEligibilitySubmission(request.resource.data, submissionId);
+      allow update: if role('diet') && district(resource.data)
+        && resource.data.status == 'submitted_to_diet'
+        && changedOnly(['status', 'eligible', 'reviewedBy', 'reviewedAt',
+          'dietRemarks', 'updatedAt'])
+        && request.resource.data.reviewedBy == request.auth.uid
+        && request.resource.data.reviewedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.dietRemarks == null
+          || request.resource.data.dietRemarks is string)
+        && (
+          (request.resource.data.status == 'eligible'
+            && request.resource.data.eligible == true
+            && resource.data.attendedWorkingDays >= 150)
+          || (request.resource.data.status == 'not_eligible'
+            && request.resource.data.eligible == false
+            && resource.data.attendedWorkingDays < 150
+            && request.resource.data.dietRemarks is string
+            && request.resource.data.dietRemarks != '')
+          || (request.resource.data.status == 'needs_correction'
+            && request.resource.data.eligible == null
+            && request.resource.data.dietRemarks is string
+            && request.resource.data.dietRemarks != '')
+        );
     }
 
     // Directory lookups are used before authentication by registration dropdowns.

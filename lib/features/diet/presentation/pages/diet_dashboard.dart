@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/home_logout_actions.dart';
+import '../../../exam_eligibility/presentation/pages/diet_exam_eligibility_review_page.dart';
 import '../../../students/presentation/pages/view_students_page.dart';
 import 'final_assignment_page.dart';
 
@@ -24,7 +25,8 @@ class DietDashboard extends StatelessWidget {
         child: Column(
           children: [
             _DashboardHeading(
-              text: 'District Institute of Education and Training'
+              text:
+                  'District Institute of Education and Training'
                   '${districtName.isEmpty ? '' : ' - $districtName'}',
             ),
             const SizedBox(height: 24),
@@ -52,6 +54,16 @@ class DietDashboard extends StatelessWidget {
                       );
                     },
                     child: const Text('Final Assignment'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const DietExamEligibilityReviewPage(),
+                        ),
+                      );
+                    },
+                    child: const Text('Exam Eligibility Review'),
                   ),
                 ],
               ),
